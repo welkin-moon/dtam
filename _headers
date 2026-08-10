@@ -4,6 +4,9 @@
   Permissions-Policy: camera=(), microphone=(), geolocation=()
   Cross-Origin-Opener-Policy: same-origin
 
+/index.html
+  Cache-Control: no-cache
+
 /game.js
   Cache-Control: public, max-age=300, must-revalidate
 
