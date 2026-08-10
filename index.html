@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#0b0d10" />
     <title>Among Us · 东滩版</title>
     <script>
         (() => {
@@ -17,11 +19,9 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-
-    <!-- ===== 主菜单 ===== -->
     <div id="menu">
         <button type="button" class="theme-toggle" id="menuThemeBtn" aria-label="切换主题">深色</button>
         <main class="menu-content">
@@ -29,18 +29,15 @@
                 <h1 class="logo">Among Us <span>东滩版</span></h1>
                 <p class="sub">Cloudflare 实时联机</p>
             </header>
-
             <div class="card">
                 <div class="field">
                     <label for="playerNameInput">昵称</label>
                     <input type="text" id="playerNameInput" placeholder="输入昵称" maxlength="12" value="玩家" autocomplete="nickname" />
                 </div>
-
                 <div class="row-buttons">
                     <button type="button" class="btn btn-primary" id="createRoomBtn">创建房间</button>
                     <button type="button" class="btn btn-outline" id="showJoinBtn">加入房间</button>
                 </div>
-
                 <div class="field" id="joinSection" style="display:none; margin-top:12px;">
                     <label for="roomIdInput">房间号</label>
                     <div class="join-row">
@@ -48,53 +45,30 @@
                         <button type="button" class="btn btn-primary" id="joinRoomBtn">加入</button>
                     </div>
                 </div>
-
                 <div id="menuStatus" aria-live="polite">输入昵称，然后创建或加入房间</div>
             </div>
         </main>
     </div>
 
-    <!-- ===== 游戏界面 ===== -->
     <div id="game">
         <canvas id="canvas"></canvas>
-
-        <div id="rotateOverlay" role="status">
-            <div class="text">横屏体验更好</div>
-        </div>
-
-        <div id="chatStream">
-            <div class="empty-msg">暂无消息</div>
-        </div>
-
+        <div id="rotateOverlay" role="status"><div class="text">横屏体验更好</div></div>
+        <div id="chatStream"><div class="empty-msg">暂无消息</div></div>
         <div id="chatPanel" aria-hidden="true">
-            <div id="chatPanelHeader">
-                <span>聊天</span>
-                <button type="button" id="chatPanelClose" aria-label="关闭聊天">×</button>
-            </div>
+            <div id="chatPanelHeader"><span>聊天</span><button type="button" id="chatPanelClose" aria-label="关闭聊天">×</button></div>
             <div id="chatPanelMessages"></div>
             <div id="chatInputArea">
                 <input type="text" id="chatInput" aria-label="聊天消息" placeholder="消息" maxlength="100" autocomplete="off" />
                 <button type="button" id="chatSend">发送</button>
             </div>
         </div>
-
         <div id="playerPanel">
-            <div id="playerPanelHeader">
-                <span>在线玩家</span>
-                <button type="button" class="close-btn" id="playerPanelClose" aria-label="关闭玩家列表">×</button>
-            </div>
+            <div id="playerPanelHeader"><span>在线玩家</span><button type="button" class="close-btn" id="playerPanelClose" aria-label="关闭玩家列表">×</button></div>
             <div id="playerPanelBody"></div>
         </div>
-
         <div id="leaveNotice"></div>
-
-        <div id="joystick">
-            <div class="knob" id="joystickKnob"></div>
-        </div>
-
-        <!-- 右下角交互按钮 -->
+        <div id="joystick"><div class="knob" id="joystickKnob"></div></div>
         <button type="button" id="interactBtn">互动</button>
-
         <div id="hud">
             <div class="hud-left">
                 <span class="room-tag">房间</span>
@@ -109,10 +83,8 @@
                 <button type="button" class="btn-leave" id="leaveBtn">退出</button>
             </div>
         </div>
-
         <div id="gameToast" aria-live="polite">等待玩家加入…</div>
     </div>
-
     <script src="/game.js" defer></script>
 </body>
 </html>
