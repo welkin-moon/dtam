@@ -8,7 +8,10 @@
   Cache-Control: no-cache
 
 /game.js
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache
 
 /styles.css
+  Cache-Control: public, max-age=300, must-revalidate
+
+/gameplay.css
   Cache-Control: public, max-age=300, must-revalidate
