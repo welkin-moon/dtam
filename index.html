@@ -10,9 +10,7 @@
         (() => {
             try {
                 const saved = localStorage.getItem('au-theme');
-                const theme = saved === 'light' || saved === 'dark'
-                    ? saved
-                    : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                const theme = saved === 'light' || saved === 'dark' ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
                 document.documentElement.dataset.theme = theme;
             } catch (_) {
                 document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -20,72 +18,33 @@
         })();
     </script>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/gameplay.css?v=2.0" />
 </head>
 <body>
     <div id="menu">
         <button type="button" class="theme-toggle" id="menuThemeBtn" aria-label="切换主题">深色</button>
         <main class="menu-content">
-            <header class="menu-brand">
-                <h1 class="logo">Among Us <span>东滩版</span></h1>
-                <p class="sub">Cloudflare 实时联机</p>
-            </header>
+            <header class="menu-brand"><h1 class="logo">Among Us <span>东滩版</span></h1><p class="sub">Cloudflare 实时联机</p></header>
             <div class="card">
-                <div class="field">
-                    <label for="playerNameInput">昵称</label>
-                    <input type="text" id="playerNameInput" placeholder="输入昵称" maxlength="12" value="玩家" autocomplete="nickname" />
-                </div>
-                <div class="row-buttons">
-                    <button type="button" class="btn btn-primary" id="createRoomBtn">创建房间</button>
-                    <button type="button" class="btn btn-outline" id="showJoinBtn">加入房间</button>
-                </div>
-                <div class="field" id="joinSection" style="display:none; margin-top:12px;">
-                    <label for="roomIdInput">房间号</label>
-                    <div class="join-row">
-                        <input type="text" id="roomIdInput" placeholder="6 位数字" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" />
-                        <button type="button" class="btn btn-primary" id="joinRoomBtn">加入</button>
-                    </div>
-                </div>
+                <div class="field"><label for="playerNameInput">昵称</label><input type="text" id="playerNameInput" placeholder="输入昵称" maxlength="12" value="玩家" autocomplete="nickname" /></div>
+                <div class="row-buttons"><button type="button" class="btn btn-primary" id="createRoomBtn">创建房间</button><button type="button" class="btn btn-outline" id="showJoinBtn">加入房间</button></div>
+                <div class="field" id="joinSection" style="display:none; margin-top:12px;"><label for="roomIdInput">房间号</label><div class="join-row"><input type="text" id="roomIdInput" placeholder="6 位数字" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" /><button type="button" class="btn btn-primary" id="joinRoomBtn">加入</button></div></div>
                 <div id="menuStatus" aria-live="polite">输入昵称，然后创建或加入房间</div>
             </div>
         </main>
     </div>
-
     <div id="game">
         <canvas id="canvas"></canvas>
         <div id="rotateOverlay" role="status"><div class="text">横屏体验更好</div></div>
         <div id="chatStream"><div class="empty-msg">暂无消息</div></div>
-        <div id="chatPanel" aria-hidden="true">
-            <div id="chatPanelHeader"><span>聊天</span><button type="button" id="chatPanelClose" aria-label="关闭聊天">×</button></div>
-            <div id="chatPanelMessages"></div>
-            <div id="chatInputArea">
-                <input type="text" id="chatInput" aria-label="聊天消息" placeholder="消息" maxlength="100" autocomplete="off" />
-                <button type="button" id="chatSend">发送</button>
-            </div>
-        </div>
-        <div id="playerPanel">
-            <div id="playerPanelHeader"><span>在线玩家</span><button type="button" class="close-btn" id="playerPanelClose" aria-label="关闭玩家列表">×</button></div>
-            <div id="playerPanelBody"></div>
-        </div>
+        <div id="chatPanel" aria-hidden="true"><div id="chatPanelHeader"><span>聊天</span><button type="button" id="chatPanelClose" aria-label="关闭聊天">×</button></div><div id="chatPanelMessages"></div><div id="chatInputArea"><input type="text" id="chatInput" aria-label="聊天消息" placeholder="消息" maxlength="100" autocomplete="off" /><button type="button" id="chatSend">发送</button></div></div>
+        <div id="playerPanel"><div id="playerPanelHeader"><span>在线玩家</span><button type="button" class="close-btn" id="playerPanelClose" aria-label="关闭玩家列表">×</button></div><div id="playerPanelBody"></div></div>
         <div id="leaveNotice"></div>
         <div id="joystick"><div class="knob" id="joystickKnob"></div></div>
         <button type="button" id="interactBtn">互动</button>
-        <div id="hud">
-            <div class="hud-left">
-                <span class="room-tag">房间</span>
-                <button type="button" class="room-id" id="roomIdDisplay" title="复制房间号" aria-label="复制房间号">------</button>
-                <span id="connectionStatus" data-state="offline">离线</span>
-                <button type="button" id="playerCountBtn" aria-label="查看在线玩家" aria-expanded="false"><strong id="playerCountNum">1</strong> / 15</button>
-            </div>
-            <div class="hud-right">
-                <span class="my-name"><span id="hudMyName">玩家</span></span>
-                <button type="button" id="settingsBtn" title="切换主题">深色</button>
-                <button type="button" id="chatToggle" aria-label="打开聊天" aria-expanded="false">聊天</button>
-                <button type="button" class="btn-leave" id="leaveBtn">退出</button>
-            </div>
-        </div>
+        <div id="hud"><div class="hud-left"><span class="room-tag">房间</span><button type="button" class="room-id" id="roomIdDisplay" title="复制房间号" aria-label="复制房间号">------</button><span id="connectionStatus" data-state="offline">离线</span><button type="button" id="playerCountBtn" aria-label="查看在线玩家" aria-expanded="false"><strong id="playerCountNum">1</strong> / 15</button></div><div class="hud-right"><span class="my-name"><span id="hudMyName">玩家</span></span><button type="button" id="settingsBtn" title="切换主题">深色</button><button type="button" id="chatToggle" aria-label="打开聊天" aria-expanded="false">聊天</button><button type="button" class="btn-leave" id="leaveBtn">退出</button></div></div>
         <div id="gameToast" aria-live="polite">等待玩家加入…</div>
     </div>
-    <script src="/movement-fix.js"></script>
-    <script src="/game.js" defer></script>
+    <script src="/game.js?v=2.0" defer></script>
 </body>
 </html>
