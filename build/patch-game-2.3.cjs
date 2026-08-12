@@ -62,3 +62,4 @@ replaceOnce(
 new Function(src);
 fs.writeFileSync('game.js', src);
 console.log('[dtam] gameplay 2.3 patch applied', hits);
+// build revision: 2.3-network
