@@ -12,15 +12,3 @@
 
 /styles.css
   Cache-Control: public, max-age=300, must-revalidate
-
-/gameplay.css
-  Cache-Control: public, max-age=300, must-revalidate
-
-/gameplay-2.4.css
-  Cache-Control: public, max-age=300, must-revalidate
-
-/gameplay-2.5.css
-  Cache-Control: public, max-age=300, must-revalidate
-
-/gameplay-2.6.css
-  Cache-Control: public, max-age=300, must-revalidate
