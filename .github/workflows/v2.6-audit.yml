@@ -2,7 +2,7 @@ name: v2.6 audit
 
 on:
   push:
-    branches: [v2.6-fix]
+    branches: [main, v2.6-fix]
   workflow_dispatch:
 
 permissions:
@@ -54,6 +54,7 @@ jobs:
             gameplay-2.4.css
             gameplay-2.5.css
             gameplay-2.6.css
+            RELEASE-2.6.md
             build/*.cjs
           if-no-files-found: error
           retention-days: 7
