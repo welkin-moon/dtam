@@ -1,3 +1,4 @@
+/* ===== Base UI (consolidated for v2.7) ===== */
 :root {
   color-scheme: light;
   --bg: #f4f5f6;
@@ -180,4 +181,164 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--text); outl
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+
+/* ===== Gameplay core (consolidated for v2.7) ===== */
+#gameMeta{position:fixed;left:max(16px,env(safe-area-inset-left));top:calc(72px + env(safe-area-inset-top));z-index:12;width:min(320px,42vw);padding:12px 14px;border:1px solid var(--border);border-radius:14px;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(10px);box-shadow:var(--shadow-sm)}
+.meta-line{display:flex;justify-content:space-between;gap:12px;font-size:13px;font-weight:650}.meta-line #roleLabel{color:var(--muted)}
+#taskProgressWrap{height:7px;margin-top:9px;border-radius:999px;background:var(--surface-3);overflow:hidden}#taskProgress{height:100%;width:0;background:var(--accent);transition:width .25s ease}
+#taskText{margin-top:7px;font-size:12px;color:var(--muted);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lobbyPanel{display:none;position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:13;width:min(360px,calc(100vw - 32px));padding:16px;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:var(--shadow-md);text-align:center}#lobbyPanel.show{display:block}.lobby-title{font-weight:750;font-size:16px}.lobby-sub{font-size:13px;color:var(--muted);margin:5px 0 12px}#startGameBtn{width:100%;min-height:44px;border:0;border-radius:11px;background:var(--text);color:var(--surface);font-weight:750;cursor:pointer}#startGameBtn:disabled{opacity:.38;cursor:not-allowed}
+#actionStack{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:calc(92px + env(safe-area-inset-bottom));z-index:12;display:flex;flex-direction:column;gap:10px}#actionStack button,#interactBtn{min-width:112px;min-height:48px;border-radius:14px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-weight:750;box-shadow:var(--shadow-sm);cursor:pointer}#actionStack button:disabled,#interactBtn:disabled{opacity:.35;cursor:not-allowed}#killBtn:not(:disabled){background:#b91c1c;color:white;border-color:#b91c1c}#reportBtn:not(:disabled){background:#f8fafc;color:#111827;border-color:#d0d5dd}
+#roleReveal,#meetingOverlay,#endOverlay,#taskModal{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(3,7,18,.62);backdrop-filter:blur(8px)}#roleReveal.show,#meetingOverlay.show,#endOverlay.show,#taskModal.show{display:flex}
+.role-card,.end-card,.task-card{width:min(430px,100%);padding:28px;border-radius:20px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow-lg);text-align:center}.eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:11px;font-weight:800;color:var(--muted)}#roleRevealName{font-size:42px;font-weight:900;margin:8px 0}#roleRevealName.impostor,.imp-win{color:#dc2626}#roleRevealName.crewmate,.crew-win{color:#2563eb}#roleRevealDesc,.end-card p,.task-card p{color:var(--muted);line-height:1.6}
+.meeting-card{width:min(760px,100%);max-height:min(760px,calc(100vh - 36px));overflow:auto;padding:20px;border-radius:20px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow-lg)}.meeting-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.meeting-head h2{margin:4px 0 0;font-size:24px}#meetingTimer{font-variant-numeric:tabular-nums;font-weight:850;font-size:22px}#meetingBody{margin:12px 0 16px;color:var(--muted)}#voteGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.vote-card{display:flex;align-items:center;gap:10px;min-height:50px;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);text-align:left;font-weight:650}.vote-card.selected,#skipVoteBtn.selected{outline:2px solid var(--accent);outline-offset:1px}.vote-card:disabled{opacity:.55}.meeting-actions{margin-top:14px}#skipVoteBtn,#backLobbyBtn,#taskHoldBtn,#taskCancelBtn{width:100%;min-height:44px;border-radius:11px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-weight:750}#backLobbyBtn,#taskHoldBtn{background:var(--text);color:var(--surface);border-color:var(--text)}
+.task-meter{height:12px;margin:18px 0;border-radius:999px;background:var(--surface-3);overflow:hidden}.task-meter>div{height:100%;width:0;background:var(--accent)}#taskHoldBtn{touch-action:none;user-select:none}.ghost{margin-top:8px;background:transparent!important}
+.dead-row{opacity:.58}.dead-badge{font-size:11px;font-weight:800;color:#dc2626;background:color-mix(in srgb,#dc2626 12%,transparent);padding:3px 6px;border-radius:999px}
+@media(max-width:720px){#gameMeta{top:calc(62px + env(safe-area-inset-top));left:max(10px,env(safe-area-inset-left));width:min(280px,58vw);padding:10px 11px}#taskText{font-size:11px}#actionStack{right:max(10px,env(safe-area-inset-right));bottom:calc(88px + env(safe-area-inset-bottom));gap:8px}#actionStack button,#interactBtn{min-width:92px;min-height:44px;font-size:12px}#voteGrid{grid-template-columns:1fr}.meeting-card{padding:16px}}
+@media(max-height:520px) and (orientation:landscape){#gameMeta{top:calc(58px + env(safe-area-inset-top));width:250px;padding:8px 10px}#taskText{display:none}#actionStack{bottom:calc(70px + env(safe-area-inset-bottom));flex-direction:row}#actionStack button,#interactBtn{min-width:78px;min-height:40px}#lobbyPanel{bottom:calc(10px + env(safe-area-inset-bottom));padding:10px 12px}.role-card,.end-card,.task-card{padding:18px}.meeting-card{max-height:calc(100vh - 18px)}}
+
+/* Gameplay 2.1 */
+#sabotageLine{margin-top:8px;padding:6px 8px;border-radius:8px;background:#b42318;color:#fff;font-size:12px;font-weight:800;font-variant-numeric:tabular-nums}
+#lobbyPanel{width:min(520px,calc(100vw - 32px));max-height:min(78vh,680px);overflow:auto}
+#rulesGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0;text-align:left}
+#rulesGrid label{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:38px;padding:7px 9px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);font-size:12px;font-weight:650}
+#rulesGrid select{min-width:82px;height:30px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);padding:0 7px}
+#rulesGrid select:disabled,#rulesGrid input:disabled{opacity:.55}
+#rulesGrid .rule-check{grid-column:1/-1;justify-content:flex-start}.rule-check input{width:17px;height:17px}
+#infoBtn:not(:disabled){background:var(--surface-2)}
+#ventBtn:not(:disabled){background:#344054;color:#fff;border-color:#344054}
+#sabotageBtn:not(:disabled){background:#7a271a;color:#fff;border-color:#7a271a}
+#sabotageOverlay,#ventOverlay,#infoOverlay{position:fixed;inset:0;z-index:82;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(3,7,18,.62)}
+#sabotageOverlay.show,#ventOverlay.show,#infoOverlay.show{display:flex}
+.tool-card{width:min(520px,100%);max-height:min(760px,calc(100dvh - 36px));overflow:auto;padding:20px;border:1px solid var(--border);border-radius:18px;background:var(--surface);box-shadow:var(--shadow-lg)}
+.tool-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}.tool-head h2{margin:4px 0 0}.tool-head>button{width:38px;height:38px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);color:var(--text);font-size:22px}
+.sabotage-grid{display:grid;grid-template-columns:1fr;gap:9px}.sabotage-grid button{display:flex;flex-direction:column;gap:4px;align-items:flex-start;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);color:var(--text);text-align:left}.sabotage-grid button strong{font-size:15px}.sabotage-grid button span{font-size:12px;color:var(--muted)}.sabotage-grid button:disabled{opacity:.42}
+#ventChoices{display:grid;gap:9px;margin:12px 0}#ventChoices button,#ventExitBtn{width:100%;min-height:44px;border:1px solid var(--border);border-radius:11px;background:var(--surface-2);color:var(--text);font-weight:700}#ventExitBtn{background:var(--text);color:var(--surface);border-color:var(--text)}
+.camera-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.camera-feed{min-height:135px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2)}.camera-feed>strong{display:block;margin-bottom:10px}.camera-feed>div{display:flex;flex-wrap:wrap;gap:7px;font-size:12px;color:var(--muted)}.camera-person{display:inline-flex;align-items:center;gap:5px}.camera-person i{width:9px;height:9px;border-radius:50%}
+.admin-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}.admin-cell{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);font-size:10px;color:var(--muted)}.admin-cell strong{font-size:18px;color:var(--text)}.admin-cell.active{border-color:var(--accent)}.admin-cell small{font-size:8px;color:#b42318;text-align:center}
+#taskModalBody{margin:14px 0;color:var(--muted)}#taskModalBody p{margin:0 0 12px}.sequence-target,.keypad-code{margin:10px 0 14px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);font-size:23px;font-weight:850;letter-spacing:.08em;color:var(--text)}.sequence-buttons{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.sequence-buttons button,#taskSubmitBtn{min-height:46px;border:1px solid var(--border);border-radius:10px;background:var(--text);color:var(--surface);font-weight:800}.sequence-buttons button{font-size:18px}#sequenceStatus{margin-top:10px;font-size:12px}
+#taskKeypadInput{width:100%;height:46px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:20px;text-align:center;letter-spacing:.18em;margin-bottom:8px}#taskAlignInput{width:100%;margin:18px 0 6px}#taskAlignValue{font-size:28px;font-weight:850;color:var(--text);margin-bottom:12px}
+@media(max-width:720px){#lobbyPanel{width:min(480px,calc(100vw - 20px));max-height:72dvh}#rulesGrid{grid-template-columns:1fr}.rule-check{grid-column:auto!important}.camera-grid{grid-template-columns:1fr 1fr}.admin-grid{gap:3px}.admin-cell{border-radius:5px}.tool-card{padding:16px}}
+@media(max-width:430px){.camera-grid{grid-template-columns:1fr}.admin-grid{grid-template-columns:repeat(3,1fr)}#actionStack{max-width:98px}#actionStack button{min-width:88px}}
+
+/* ===== Gameplay profiles/voice (consolidated for v2.7) ===== */
+.profile-picker{display:flex;align-items:center;gap:10px;margin:10px 0 14px}.avatar-preview{width:42px;height:42px;flex:0 0 42px;border:1px solid var(--border,#d0d5dd);border-radius:8px;display:grid;place-items:center;overflow:hidden;font-size:11px;color:var(--muted,#667085);background:var(--surface-2,#eef0f2)}.avatar-preview img{width:100%;height:100%;object-fit:cover;image-rendering:pixelated}.profile-picker-actions{min-width:0;display:flex;flex-direction:column;gap:5px}.profile-picker-actions>div{display:flex;gap:6px}.profile-btn{padding:6px 9px!important;min-height:30px!important;font-size:12px!important}.profile-picker small{font-size:11px;line-height:1.25;color:var(--muted,#667085)}#mapBtn,#micBtn{white-space:nowrap}#micBtn[data-state="on"]{font-weight:650}#micBtn[data-state="busy"]{opacity:.7}#minimapOverlay{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:flex-end;padding:62px 14px 14px;z-index:36;pointer-events:none}#minimapOverlay.show{display:flex}#minimapCard{width:min(330px,72vw);padding:10px;border:1px solid var(--border,#d0d5dd);border-radius:12px;background:color-mix(in srgb,var(--surface,#fff) 96%,transparent);box-shadow:0 8px 26px rgba(0,0,0,.14);pointer-events:auto;backdrop-filter:none}#minimapHead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:13px;font-weight:650}#minimapHead button{border:0;background:transparent;color:inherit;font-size:18px;line-height:1;padding:3px 6px;cursor:pointer}#minimapCanvas{display:block;width:100%;aspect-ratio:1;border-radius:8px;background:var(--surface-2,#eef0f2);image-rendering:pixelated}#minimapLegend{display:flex;gap:12px;flex-wrap:wrap;margin-top:7px;font-size:11px;color:var(--muted,#667085)}#minimapLegend span{display:inline-flex;align-items:center;gap:4px}#minimapLegend i{width:7px;height:7px;border-radius:2px;display:inline-block;background:currentColor}.avatar-mini{width:26px;height:26px;border-radius:6px;object-fit:cover;image-rendering:pixelated;flex:0 0 26px}.avatar-placeholder{width:26px;height:26px;border-radius:6px;display:grid;place-items:center;font-size:11px;font-weight:700;background:var(--surface-2,#eef0f2);flex:0 0 26px}.voice-sink{display:block!important;position:fixed!important;left:-8px!important;top:-8px!important;width:1px!important;height:1px!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}#actionStack #abilityBtn{order:2}.role-count-note{grid-column:1/-1;font-size:11px;color:var(--muted,#667085);margin-top:-2px}.poison-note{font-size:11px;color:var(--muted,#667085)}@media(max-width:760px){.hud-right .my-name{display:none}#mapBtn,#micBtn,#settingsBtn,#chatToggle{padding-left:8px!important;padding-right:8px!important;font-size:12px!important}#minimapOverlay{padding-top:58px;padding-right:8px}#minimapCard{width:min(300px,88vw)}.profile-picker small{max-width:260px}}@media(prefers-reduced-motion:reduce){#minimapOverlay,#minimapCard{transition:none!important}}
+
+/* ===== Gameplay layout/meeting (consolidated for v2.7) ===== */
+/* Gameplay 2.5: layout and meeting UX. Keep the playfield visually quiet. */
+#hud{align-items:flex-start;flex-wrap:nowrap}
+.hud-left,.hud-right{flex-wrap:nowrap;min-width:0}
+.hud-left{flex:0 1 auto}.hud-right{flex:0 0 auto}
+#hudMoreWrap{position:relative;display:inline-flex}
+#hudMoreMenu{position:absolute;top:calc(100% + 6px);right:0;z-index:65;min-width:136px;padding:5px;border:1px solid var(--border);border-radius:10px;background:var(--surface);box-shadow:var(--shadow);display:grid;gap:3px}
+#hudMoreMenu[hidden]{display:none!important}
+#hudMoreMenu button{width:100%;min-height:38px!important;justify-content:flex-start!important;border:0!important;background:transparent!important;backdrop-filter:none!important;text-align:left}
+#hudMoreMenu button:hover{background:var(--surface-2)!important}
+#hudMoreMenu .btn-leave{color:var(--danger)!important}
+
+/* One action dock. interactBtn is moved into this grid by game.js. */
+#actionStack{right:max(14px,env(safe-area-inset-right));bottom:max(16px,calc(env(safe-area-inset-bottom) + 10px));width:min(246px,48vw);max-width:none!important;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;align-items:stretch}
+#actionStack button,#actionStack #interactBtn{position:static!important;inset:auto!important;width:auto!important;min-width:0!important;min-height:43px!important;aspect-ratio:auto!important;border-radius:11px!important;padding:6px 9px!important;font-size:12px;line-height:1.15;white-space:normal;backdrop-filter:none}
+#actionStack button[hidden]{display:none!important}
+#actionStack #interactBtn:not(:disabled){background:var(--text);color:var(--surface);border-color:var(--text)}
+#actionStack #killBtn:not(:disabled){background:#b91c1c;color:#fff;border-color:#b91c1c}
+
+/* Detailed role configuration stays grouped rather than becoming a wall of controls. */
+#lobbyPanel{width:min(620px,calc(100vw - 28px))}
+#rulesGrid{align-items:start}
+.role-group{grid-column:1/-1;border:1px solid var(--border);border-radius:11px;background:var(--surface-2);padding:0;margin:0;overflow:hidden}
+.role-group>summary{min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:750;list-style:none}
+.role-group>summary::-webkit-details-marker{display:none}.role-group>summary::after{content:'+';font-size:16px;color:var(--muted)}.role-group[open]>summary::after{content:'−'}
+.role-summary-note{font-size:10px;font-weight:550;color:var(--muted);margin-left:auto}
+.role-setting-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:0 8px 8px}
+#rulesGrid .role-setting-grid label{background:var(--surface);min-height:36px}
+.role-count-note{grid-column:1/-1;margin:0;padding:3px 1px 1px;font-size:11px;color:var(--muted)}
+.speed-rule select{min-width:96px!important}
+
+/* Meeting is a workspace: voting + communications + visible result. */
+#meetingOverlay{padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));backdrop-filter:none;background:rgba(3,7,18,.70)}
+.meeting-card{width:min(820px,100%);max-height:calc(100dvh - 20px);padding:16px;display:flex;flex-direction:column;overflow:hidden}
+.meeting-head{flex:0 0 auto}.meeting-head h2{font-size:21px}
+#meetingBody{margin:8px 0 10px;flex:0 0 auto}
+#meetingComms{display:flex;align-items:center;gap:7px;flex:0 0 auto;margin-bottom:10px;padding:7px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}
+#meetingComms button{min-height:38px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);padding:0 11px;font-weight:700}
+#meetingComms .meeting-progress{margin-left:auto;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#voteGrid{min-height:0;overflow:auto;grid-template-columns:repeat(2,minmax(0,1fr));padding:2px;align-content:start}
+.vote-card{min-width:0}.vote-card>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meeting-actions{flex:0 0 auto;margin-top:9px}
+#meetingResult{display:none;min-height:0;overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);padding:12px}
+#meetingResult.show{display:block}
+.meeting-result-title{font-size:17px;font-weight:800;margin-bottom:9px}.meeting-result-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;min-height:34px;padding:5px 3px;border-bottom:1px solid var(--border)}.meeting-result-row:last-child{border-bottom:0}.meeting-result-name{display:flex;align-items:center;gap:7px;min-width:0}.meeting-result-name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.meeting-result-voters{grid-column:1/-1;padding-left:33px;font-size:11px;color:var(--muted);line-height:1.35}.meeting-result-count{font-weight:850;font-variant-numeric:tabular-nums}
+#chatPanel{z-index:105}
+#voiceUnlockBtn{position:fixed;z-index:110;left:50%;bottom:max(16px,calc(env(safe-area-inset-bottom) + 10px));transform:translateX(-50%);min-height:40px;padding:0 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);box-shadow:var(--shadow);font-weight:700}
+#voiceUnlockBtn[hidden]{display:none!important}
+
+/* Lightweight vitals: no animation, no permanent panel. */
+#vitalsOverlay{position:fixed;inset:0;z-index:83;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(3,7,18,.66)}#vitalsOverlay.show{display:flex}
+#vitalsCard{width:min(520px,100%);max-height:min(600px,calc(100dvh - 32px));overflow:auto;padding:16px;border:1px solid var(--border);border-radius:15px;background:var(--surface)}
+#vitalsGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px}.vital-row{display:flex;align-items:center;gap:8px;min-height:40px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2)}.vital-state{margin-left:auto;font-size:11px;font-weight:800}.vital-state.dead{color:var(--danger)}
+
+@media(max-width:720px){
+  #hud{top:max(6px,env(safe-area-inset-top));left:max(6px,env(safe-area-inset-left));right:max(6px,env(safe-area-inset-right));gap:4px}
+  #hud .room-tag,#hud #connectionStatus,.hud-right .my-name{display:none!important}
+  #hud .room-id{margin-left:0!important;border-radius:8px!important;padding-inline:7px!important;min-width:38px}
+  #playerCountBtn{padding-inline:7px!important}
+  .hud-left,.hud-right{gap:4px}
+  #mapBtn,#micBtn,#chatToggle,#moreBtn{min-width:42px!important;padding-inline:7px!important;font-size:11px!important}
+  #actionStack{width:min(196px,50vw);max-width:none!important;right:max(8px,env(safe-area-inset-right));bottom:max(8px,calc(env(safe-area-inset-bottom) + 6px));gap:5px}
+  #actionStack button,#actionStack #interactBtn{min-height:39px!important;font-size:11px;padding:5px!important}
+  #gameMeta{top:calc(51px + env(safe-area-inset-top));width:min(250px,62vw)}
+  #chatStream{top:50px}
+  .role-setting-grid{grid-template-columns:1fr}
+  .meeting-card{padding:11px;max-height:calc(100dvh - 12px)}
+  #meetingComms{margin-bottom:7px;padding:5px;gap:5px}#meetingComms button{min-height:35px;padding-inline:9px;font-size:11px}.meeting-progress{font-size:10px!important}
+  #voteGrid{grid-template-columns:1fr;gap:6px}.vote-card{min-height:43px;padding:7px 9px}
+  #vitalsGrid{grid-template-columns:1fr}
+}
+@media(max-width:430px){
+  #mapBtn,#micBtn,#chatToggle,#moreBtn{min-width:38px!important;padding-inline:5px!important}
+  #playerCountBtn{font-size:11px!important}.room-id{font-size:11px!important}
+  #actionStack{width:min(184px,52vw);max-width:none!important}
+  #gameMeta{width:min(220px,60vw);padding:8px 9px}
+}
+@media(max-height:520px) and (orientation:landscape){
+  #hud{top:max(4px,env(safe-area-inset-top))}
+  #actionStack{width:min(300px,45vw);max-width:none!important;grid-template-columns:repeat(3,minmax(0,1fr));right:max(7px,env(safe-area-inset-right));bottom:max(7px,env(safe-area-inset-bottom));gap:5px}
+  #actionStack button,#actionStack #interactBtn{min-height:36px!important;font-size:10.5px}
+  #gameMeta{top:calc(42px + env(safe-area-inset-top));width:235px}
+  .meeting-card{max-height:calc(100dvh - 8px);padding:9px 11px}.meeting-head h2{font-size:18px}#meetingBody{margin:5px 0 6px;font-size:12px}#meetingComms{margin-bottom:5px}#voteGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.vote-card{min-height:37px;padding:5px 7px}.meeting-actions{margin-top:5px}#skipVoteBtn{min-height:37px}
+}
+
+/* ===== Gameplay touch/privacy (consolidated for v2.7) ===== */
+/* Gameplay 2.6: stable touch actions, private ghost UI, compact-map polish and usable voice playback. */
+#actionStack{touch-action:manipulation}
+#actionStack #infoBtn{order:1}
+#actionStack #ventBtn{order:2}
+#actionStack #abilityBtn{order:3}
+#actionStack #sabotageBtn{order:4}
+#actionStack #killBtn{order:5}
+#actionStack #reportBtn{order:6}
+#actionStack #interactBtn{order:7}
+#actionStack button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#reportBtn:disabled{pointer-events:none}
+#killBtn:disabled{pointer-events:none}
+
+/* Audio elements must remain in the render tree for Safari/iOS autoplay recovery. */
+.voice-sink{display:block!important;position:fixed!important;left:-8px!important;top:-8px!important;width:1px!important;height:1px!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}
+.voice-sink audio{display:block!important;width:1px!important;height:1px!important}
+
+.msg-item.ghost-msg{border-left:3px solid #8b5cf6;padding-left:7px}
+.msg-item.ghost-msg .msg-name{color:#8b5cf6}
+#chatInputArea input:disabled,#chatInputArea button:disabled{opacity:.5;cursor:not-allowed}
+
+.admin-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+.room-id{min-width:68px;font-variant-numeric:tabular-nums;letter-spacing:.04em}
+#mapBtn:disabled{opacity:.45;cursor:not-allowed}
+#taskModal,#sabotageOverlay,#ventOverlay,#infoOverlay,#meetingOverlay,#endOverlay{overscroll-behavior:contain}
+
+@media(max-width:430px){
+  .admin-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:3px}
+  .admin-cell{min-width:0;font-size:9px}.admin-cell strong{font-size:15px}.admin-cell small{font-size:7px}
+  .room-id{min-width:58px!important;padding-inline:5px!important;font-size:10px!important}
 }

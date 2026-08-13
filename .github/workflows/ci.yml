@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main, v2.7-cleanup]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify canonical sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check game.js
+          cp worker.js /tmp/dtam-worker.mjs
+          node --check /tmp/dtam-worker.mjs
+          node scripts/test.cjs
+      - name: Reject legacy build layers
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -d src
+          test ! -d build
+          test ! -e gameplay.css
+          test ! -e gameplay-2.4.css
+          test ! -e gameplay-2.5.css
+          test ! -e gameplay-2.6.css
+          test ! -e RELEASE-2.6.md

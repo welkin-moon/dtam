@@ -17,11 +17,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/styles.css" />
-    <link rel="stylesheet" href="/gameplay.css?v=2.1" />
-    <link rel="stylesheet" href="/gameplay-2.4.css?v=2.4" />
-    <link rel="stylesheet" href="/gameplay-2.5.css?v=2.5" />
-    <link rel="stylesheet" href="/gameplay-2.6.css?v=2.6" />
+    <link rel="stylesheet" href="/styles.css?v=2.7" />
 </head>
 <body>
     <div id="menu">
@@ -39,7 +35,7 @@
                     </div>
                 </div>
                 <div class="row-buttons"><button type="button" class="btn btn-primary" id="createRoomBtn">创建房间</button><button type="button" class="btn btn-outline" id="showJoinBtn">加入房间</button></div>
-                <div class="field" id="joinSection" style="display:none; margin-top:12px;"><label for="roomIdInput">房间号</label><div class="join-row"><input type="text" id="roomIdInput" placeholder="6 位数字（兼容旧 2 位）" maxlength="6" inputmode="numeric" pattern="[0-9]{2}|[0-9]{6}" autocomplete="off" /><button type="button" class="btn btn-primary" id="joinRoomBtn">加入</button></div></div>
+                <div class="field" id="joinSection" style="display:none; margin-top:12px;"><label for="roomIdInput">房间号</label><div class="join-row"><input type="text" id="roomIdInput" placeholder="2 位数字" maxlength="2" inputmode="numeric" pattern="[0-9]{2}" autocomplete="off" /><button type="button" class="btn btn-primary" id="joinRoomBtn">加入</button></div></div>
                 <div id="menuStatus" aria-live="polite">输入昵称，然后创建或加入房间</div>
             </div>
         </main>
@@ -59,6 +55,6 @@
         </div>
         <div id="gameToast" aria-live="polite">等待玩家加入…</div>
     </div>
-    <script src="/game.js?v=2.6" defer></script>
+    <script src="/game.js?v=2.7" defer></script>
 </body>
 </html>
