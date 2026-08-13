@@ -23,6 +23,7 @@ jobs:
           curl -fsSL 'https://api.github.com/licenses/agpl-3.0' | jq -r '.body' > LICENSE
           grep -F "version:'2.7'" worker.js
           grep -F 'Voice track forbidden' worker.js
+          grep -F 'if(!/^\d{2}$/.test(room))' worker.js
           grep -F 'GNU AFFERO GENERAL PUBLIC LICENSE' LICENSE
           cp worker.js /tmp/worker.mjs
           node --check /tmp/worker.mjs
@@ -30,5 +31,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add worker.js LICENSE
           git diff --cached --quiet && exit 0
-          git commit -m 'chore: capture deployed v2.7 sources and AGPL license'
+          git commit -m 'chore: capture deployed strict two-digit v2.7 Worker source'
           git push origin HEAD:v2.7-cleanup
