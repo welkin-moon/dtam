@@ -22,9 +22,11 @@ jobs:
           curl -fsSL 'https://dtam-v27-source-transfer.meteor-lab.workers.dev/63f5eafb780246d696bd57d9f91fab68' -o worker.js
           grep -F "version:'2.7'" worker.js
           grep -F 'Voice track forbidden' worker.js
-          node --check <(cp worker.js /dev/stdout)
+          cp worker.js /tmp/worker.mjs
+          node --check /tmp/worker.mjs
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add worker.js
+          git diff --cached --quiet && exit 0
           git commit -m 'chore: capture deployed v2.7 Worker source'
           git push origin HEAD:v2.7-cleanup
