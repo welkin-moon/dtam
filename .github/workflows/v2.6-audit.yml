@@ -34,21 +34,26 @@ jobs:
         run: node build/run-patch-game-2.5.cjs
       - name: Apply gameplay 2.5 final fixes
         run: node build/patch-game-2.5-fix.cjs
-      - name: Validate generated JavaScript
+      - name: Apply gameplay 2.6
+        run: node build/patch-game-2.6.cjs
+      - name: Validate gameplay 2.6
         run: |
           node --check game.js
+          node build/test-game-2.6.cjs
           wc -c game.js
       - name: Upload reconstructed production source
         uses: actions/upload-artifact@v4
         with:
-          name: dtam-current-production
+          name: dtam-v2.6-production
           path: |
+            _headers
             game.js
             index.html
             styles.css
             gameplay.css
             gameplay-2.4.css
             gameplay-2.5.css
+            gameplay-2.6.css
             build/*.cjs
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 7
