@@ -1,0 +1,10 @@
+const fs=require('fs');
+const zlib=require('zlib');
+const parts=fs.readdirSync('src').filter(name=>/^game-2\.6\.br\.b64\.\d+$/.test(name)).sort();
+if(!parts.length)throw new Error('[2.6 patch] missing compressed production source');
+const encoded=parts.map(name=>fs.readFileSync('src/'+name,'utf8')).join('').replace(/\s+/g,'');
+const src=zlib.brotliDecompressSync(Buffer.from(encoded,'base64')).toString('utf8');
+new Function(src);
+if(!src.includes("const CLIENT_VERSION = '2.6'"))throw new Error('[2.6 patch] bundle version mismatch');
+fs.writeFileSync('game.js',src);
+console.log('[dtam] gameplay 2.6 production bundle restored',{bytes:Buffer.byteLength(src),parts:parts.length});
