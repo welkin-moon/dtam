@@ -15,18 +15,20 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: v2.7-cleanup
-      - name: Import the exact deployed Worker source
+      - name: Import exact deployed Worker source and AGPL-3.0 text
         shell: bash
         run: |
           set -euo pipefail
           curl -fsSL 'https://dtam-v27-source-transfer.meteor-lab.workers.dev/63f5eafb780246d696bd57d9f91fab68' -o worker.js
+          curl -fsSL 'https://api.github.com/licenses/agpl-3.0' | jq -r '.body' > LICENSE
           grep -F "version:'2.7'" worker.js
           grep -F 'Voice track forbidden' worker.js
+          grep -F 'GNU AFFERO GENERAL PUBLIC LICENSE' LICENSE
           cp worker.js /tmp/worker.mjs
           node --check /tmp/worker.mjs
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add worker.js
+          git add worker.js LICENSE
           git diff --cached --quiet && exit 0
-          git commit -m 'chore: capture deployed v2.7 Worker source'
+          git commit -m 'chore: capture deployed v2.7 sources and AGPL license'
           git push origin HEAD:v2.7-cleanup
