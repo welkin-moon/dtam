@@ -1,0 +1,131 @@
+const fs=require('fs');
+const vm=require('vm');
+
+const src=fs.readFileSync('game.js','utf8');
+const html=fs.readFileSync('index.html','utf8');
+const css=fs.readFileSync('styles.css','utf8');
+const headers=fs.readFileSync('_headers','utf8');
+const worker=fs.readFileSync('worker.js','utf8');
+
+function assert(condition,message){if(!condition)throw new Error(`[2.7 test] ${message}`);}
+function includes(text,needle,message){assert(text.includes(needle),message||`missing ${needle}`);}
+function excludes(text,needle,message){assert(!text.includes(needle),message||`unexpected ${needle}`);}
+function approx(a,b,epsilon=1e-8){return Math.abs(a-b)<=epsilon;}
+
+new Function(src);
+includes(src,"const CLIENT_VERSION = '2.7'",'client version must be 2.7');
+includes(src,"const ROOM_CODE_RE = /^\\d{2}$/",'client room codes must be exactly two digits');
+includes(src,"Array.from({length:90},(_,i)=>String(i+10))",'room candidate pool must be 10-99');
+includes(src,"room=String(room).replace(/\\D/g,'').slice(0,2)",'room normalization must stop at two digits');
+includes(src,'const MAP_SIZE = 100','compact map must be enabled');
+includes(src,'const NETWORK_MAP_SIZE = 150','Worker protocol map must remain 150 tiles');
+includes(src,'const NETWORK_TO_CLIENT = MAP_SIZE / NETWORK_MAP_SIZE','coordinate scaling must exist');
+includes(src,'const VIEW_TILES = 26','camera view must remain widened');
+includes(src,"x:+toNetworkCoord(myPos.x).toFixed(3)",'outgoing positions must use Worker coordinates');
+includes(src,'const x=toClientCoord(msg.x),y=toClientCoord(msg.y)','incoming positions must use client coordinates');
+includes(src,'bodies=normalizeBodies(msg.bodies)','body coordinates must be transformed');
+includes(src,'interactBtn.onclick=activateInteract','interaction button must be wired');
+includes(src,'ventBtn.onclick=activateVent','vent button must be wired');
+includes(src,'infoBtn.onclick=activateInfo','information console button must be wired');
+includes(src,'sabotageBtn.onclick=openSabotage','sabotage button must be wired');
+includes(src,"skipVoteBtn.onclick=()=>castVote('skip')",'skip vote must be wired');
+includes(src,"backLobbyBtn.onclick=()=>{if(isHost)sendPacket({t:'reset'});else showToast('等待房主返回大厅');}",'only host may reset lobby');
+includes(src,'reportBlockedUntil=Date.now()+REPORT_GUARD_MS','post-kill report guard must exist');
+includes(src,'function meetingUiActive()','meeting state must have one canonical UI guard');
+includes(src,"const playing=gameState.phase==='playing'&&!meetingUiActive()",'scene actions must freeze during meetings');
+includes(src,"meetingOverlay.classList.contains('show')||selfState.inVent",'movement must freeze while meeting overlay is shown');
+includes(src,"if(gameState.meeting&&!meetingOverlay.classList.contains('show'))openMeeting",'state messages must restore a missing meeting overlay');
+includes(src,"if(dead&&selfState.alive)return",'client must defensively reject ghost text');
+includes(src,'return selfState.alive?p.alive:true','client must defensively reject dead-player voice');
+includes(src,'if(entry&&!voicePeerAllowed(entry))','late WebRTC tracks must respect privacy');
+includes(src,"GLOBAL_AVATAR_KEY='au-dtam-avatar'",'avatar must persist globally');
+includes(src,'const MAX_AVATAR_CHARS = 4800','avatar must fit Worker limit');
+includes(src,"toDataURL('image/webp'",'avatar encoder must use WebP');
+includes(src,'Number(st.guardianAngels||0)','guardian angels must count as special crew');
+includes(src,'voiceErrorMessage','voice errors must be classified');
+excludes(headers,'microphone=()','Pages headers must not disable microphone');
+includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
+includes(html,'/styles.css?v=2.7','only canonical v2.7 stylesheet must be loaded');
+includes(html,'/game.js?v=2.7','v2.7 JavaScript must be loaded');
+includes(html,'maxlength="2"','room input must be two digits');
+includes(html,'pattern="[0-9]{2}"','room input must validate two digits');
+excludes(html,'gameplay-2.','legacy versioned CSS must not be loaded');
+excludes(css,'.voice-sink{display:none!important}','remote audio must never be removed from the render tree');
+includes(css,'#actionStack #killBtn{order:5}','kill button position must be stable');
+includes(css,'#actionStack #reportBtn{order:6}','report must not replace kill under the finger');
+
+includes(worker,"version:'2.7'",'Worker health version must be 2.7');
+includes(worker,"if(!/^\\d{2}$/.test(room))",'Worker must enforce strict two-digit room codes');
+excludes(worker,"(?:\\d{2}|\\d{6})",'Worker must not retain six-digit room compatibility');
+includes(worker,'voiceDirectory(viewer=null)','voice directory must be recipient-aware');
+includes(worker,"allowedVoice:this.voiceDirectory(p).map",'voice auth must return allowed remote tracks');
+includes(worker,'Voice track forbidden','voice proxy must enforce allowed remote tracks');
+includes(worker,"channel:ghost?'ghost'",'Worker must classify ghost chat');
+includes(worker,"if(peer&&peer.alive===false)jsonSend(peerWs,payload)",'ghost text must only be sent to dead peers');
+includes(worker,"meetingActive=this.phase==='playing'",'Worker must permit meeting chat while a game is active');
+
+const marker='const $=id=>document.getElementById(id);';
+const cut=src.indexOf(marker);
+assert(cut>0,'map prelude marker missing');
+const context={Uint8Array,Math,Set,Map,console};
+const prelude=src.slice(0,cut).replace(/^\(\(\) => \{\n'use strict';\n+/,'');
+vm.runInNewContext(prelude+`\nglobalThis.__map={MAP_SIZE,NETWORK_MAP_SIZE,NETWORK_TO_CLIENT,CLIENT_TO_NETWORK,MAP_DATA,NETWORK_MAP_DATA,OBJECT_DEFS,NETWORK_OBJECT_DEFS,VENT_DEFS,NETWORK_VENT_DEFS,DOOR_CELLS,NETWORK_DOOR_CELLS,toClientCoord,toNetworkCoord};`,context,{timeout:2000});
+const m=context.__map;
+assert(m.MAP_SIZE===100,'evaluated client map size mismatch');
+assert(m.NETWORK_MAP_SIZE===150,'evaluated Worker map size mismatch');
+assert(approx(m.NETWORK_TO_CLIENT,2/3),'network-to-client scale mismatch');
+assert(approx(m.CLIENT_TO_NETWORK,1.5),'client-to-network scale mismatch');
+for(const value of [0,.32,7.5,75.5,149.5])assert(approx(m.toNetworkCoord(m.toClientCoord(value)),value),`coordinate round-trip failed at ${value}`);
+
+const idx=(x,y,size)=>y*size+x;
+const wall=(data,size,x,y)=>x<0||y<0||x>=size||y>=size||data[idx(x,y,size)]===1;
+for(let i=0;i<m.NETWORK_OBJECT_DEFS.length;i++){
+  const net=m.NETWORK_OBJECT_DEFS[i],client=m.OBJECT_DEFS[i];
+  assert(net.id===client.id,`object identity mismatch at ${i}`);
+  assert(approx(client.x,m.toClientCoord(net.x))&&approx(client.y,m.toClientCoord(net.y)),`${net.id} coordinate scale mismatch`);
+}
+for(let i=0;i<m.NETWORK_VENT_DEFS.length;i++){
+  const net=m.NETWORK_VENT_DEFS[i],client=m.VENT_DEFS[i];
+  assert(net.id===client.id,`vent identity mismatch at ${i}`);
+  assert(approx(client.x,m.toClientCoord(net.x))&&approx(client.y,m.toClientCoord(net.y)),`${net.id} coordinate scale mismatch`);
+}
+for(const item of [...m.OBJECT_DEFS,...m.VENT_DEFS]){
+  const x=Math.floor(item.x),y=Math.floor(item.y);
+  assert(!wall(m.MAP_DATA,m.MAP_SIZE,x,y),`${item.id} must be on a client-visible walkable cell`);
+  assert(item.x>0&&item.y>0&&item.x<m.MAP_SIZE&&item.y<m.MAP_SIZE,`${item.id} must be in client bounds`);
+}
+for(const item of [...m.NETWORK_OBJECT_DEFS,...m.NETWORK_VENT_DEFS]){
+  const x=Math.floor(item.x),y=Math.floor(item.y);
+  assert(!wall(m.NETWORK_MAP_DATA,m.NETWORK_MAP_SIZE,x,y),`${item.id} must be on a Worker walkable cell`);
+}
+for(const [x,y] of m.DOOR_CELLS)assert(!wall(m.MAP_DATA,m.MAP_SIZE,x,y),`client door cell ${x},${y} must be open before sabotage`);
+for(const [x,y] of m.NETWORK_DOOR_CELLS)assert(!wall(m.NETWORK_MAP_DATA,m.NETWORK_MAP_SIZE,x,y),`Worker door cell ${x},${y} must be open before sabotage`);
+
+function flood(data,size,start){
+  const seen=new Uint8Array(size*size),queue=[start];
+  assert(!wall(data,size,start[0],start[1]),`flood start ${start} must be open`);
+  seen[idx(start[0],start[1],size)]=1;
+  for(let head=0;head<queue.length;head++){
+    const [x,y]=queue[head];
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nx=x+dx,ny=y+dy;
+      if(wall(data,size,nx,ny))continue;
+      const k=idx(nx,ny,size);
+      if(!seen[k]){seen[k]=1;queue.push([nx,ny]);}
+    }
+  }
+  return {seen,queue};
+}
+const clientFlood=flood(m.MAP_DATA,m.MAP_SIZE,[Math.floor(m.toClientCoord(75.5)),Math.floor(m.toClientCoord(75.5))]);
+const networkFlood=flood(m.NETWORK_MAP_DATA,m.NETWORK_MAP_SIZE,[75,75]);
+for(const item of [...m.OBJECT_DEFS,...m.VENT_DEFS])assert(clientFlood.seen[idx(Math.floor(item.x),Math.floor(item.y),m.MAP_SIZE)],`${item.id} must be reachable in client rendering`);
+for(const item of [...m.NETWORK_OBJECT_DEFS,...m.NETWORK_VENT_DEFS])assert(networkFlood.seen[idx(Math.floor(item.x),Math.floor(item.y),m.NETWORK_MAP_SIZE)],`${item.id} must be reachable under Worker collision`);
+assert(clientFlood.queue.length>m.MAP_SIZE*m.MAP_SIZE*.5,'client-visible map is unexpectedly fragmented');
+assert(networkFlood.queue.length>m.NETWORK_MAP_SIZE*m.NETWORK_MAP_SIZE*.55,'Worker map is unexpectedly fragmented');
+
+console.log('[dtam] gameplay 2.7 tests passed',{
+  clientWalkableReachable:clientFlood.queue.length,
+  networkWalkableReachable:networkFlood.queue.length,
+  objects:m.OBJECT_DEFS.length,
+  vents:m.VENT_DEFS.length
+});
