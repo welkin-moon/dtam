@@ -2,6 +2,7 @@
 'use strict';
 
 const HybridWebSocket = window.WebSocket;
+const NativeRTCPeerConnection = window.RTCPeerConnection;
 const proto = HybridWebSocket?.prototype;
 if (!proto || typeof proto._finalClose !== 'function' || typeof proto._setDirect !== 'function') return;
 
@@ -62,15 +63,24 @@ function clearRtcRetry(socket) {
   socket._v3RtcRetryTimer = null;
 }
 
+function invalidateRtc(socket) {
+  socket._v3RtcGeneration = Number(socket._v3RtcGeneration || 0) + 1;
+  clearTimeout(socket._disconnectTimer);
+  socket._disconnectTimer = null;
+}
+
 async function rebuildRtc(socket, trigger = 'network-change') {
   if (!socket || socket._closed || socket.readyState !== HybridWebSocket.OPEN || !signalAvailable(socket)) return;
   clearRtcRetry(socket);
-  try { socket._pc?.close(); } catch (_) {}
+  invalidateRtc(socket);
+  const oldPc = socket._pc;
   socket._pc = null;
   socket._control = null;
   socket._fast = null;
   socket._direct = false;
   socket._rtcStarted = false;
+  try { oldPc?.close(); } catch (_) {}
+
   const diagnostics = window.__DTAM_V3_TRANSPORT__;
   if (diagnostics) {
     diagnostics.direct = false;
@@ -97,18 +107,110 @@ function scheduleRtcRetry(socket, trigger = 'transport-loss', immediate = false)
   }, delay);
 }
 
-// dtam-fast is still intentionally unreliable, but keeping it ordered prevents a newer
-// position sample from being delivered before an older one on the same SCTP stream.
-const nativeRtc = window.RTCPeerConnection;
-if (nativeRtc?.prototype?.createDataChannel) {
-  const originalCreateDataChannel = nativeRtc.prototype.createDataChannel;
-  nativeRtc.prototype.createDataChannel = function patchedCreateDataChannel(label, options) {
-    if (label === 'dtam-fast') {
-      options = { ...(options || {}), ordered: true, maxRetransmits: 0 };
-    }
-    return originalCreateDataChannel.call(this, label, options);
+// Replace the bootstrap RTC constructor with a generation-fenced version. Address/interface
+// changes can close an old PeerConnection after a replacement has already started; every
+// callback therefore proves that it still belongs to the current generation before mutating
+// the HybridWebSocket state.
+proto._startRtc = async function generationAwareStartRtc() {
+  if (this._rtcStarted || this._closed || !signalAvailable(this)) return;
+  if (typeof NativeRTCPeerConnection !== 'function') throw new Error('RTCPeerConnection unavailable');
+
+  this._rtcStarted = true;
+  const generation = Number(this._v3RtcGeneration || 0) + 1;
+  this._v3RtcGeneration = generation;
+  const signal = this._signal;
+  const pc = new NativeRTCPeerConnection({
+    iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }],
+    bundlePolicy: 'max-bundle',
+  });
+  this._pc = pc;
+
+  // Old samples are disposable, but ordering is still useful: maxRetransmits=0 avoids
+  // retransmitting stale positions while ordered=true prevents position time-travel.
+  const control = pc.createDataChannel('dtam-control', { ordered: true });
+  const fast = pc.createDataChannel('dtam-fast', { ordered: true, maxRetransmits: 0 });
+  control.binaryType = fast.binaryType = 'arraybuffer';
+  this._control = control;
+  this._fast = fast;
+
+  const current = () =>
+    !this._closed && this._v3RtcGeneration === generation && this._pc === pc;
+
+  const opened = () => {
+    if (!current()) return;
+    if (control.readyState === 'open' && fast.readyState === 'open') this._setDirect(true);
   };
-}
+  const closed = () => {
+    if (current()) this._setDirect(false, 'DataChannel 已断开');
+  };
+  const errored = () => {
+    if (current()) this._setDirect(false, 'DataChannel 错误');
+  };
+  control.onopen = fast.onopen = opened;
+  control.onclose = fast.onclose = closed;
+  control.onerror = fast.onerror = errored;
+  control.onmessage = event => {
+    if (current()) this._deliverApp(event.data, 'direct');
+  };
+  fast.onmessage = event => {
+    if (current()) this._deliverApp(event.data, 'direct');
+  };
+
+  pc.addEventListener('connectionstatechange', () => {
+    if (!current()) return;
+    const state = pc.connectionState;
+    if (state === 'connected') {
+      clearTimeout(this._disconnectTimer);
+      this._disconnectTimer = null;
+      return;
+    }
+    if (state === 'failed' || state === 'closed') {
+      this._setDirect(false, `ICE ${state}`);
+    } else if (state === 'disconnected') {
+      clearTimeout(this._disconnectTimer);
+      this._disconnectTimer = setTimeout(() => {
+        if (current() && pc.connectionState === 'disconnected') {
+          this._setDirect(false, 'ICE disconnected');
+        }
+      }, 2500);
+    }
+  });
+
+  try {
+    const offer = await pc.createOffer();
+    if (!current()) return;
+    await pc.setLocalDescription(offer);
+    if (!current()) return;
+    await this._waitIceGather(pc);
+    if (!current()) return;
+    if (!pc.localDescription) throw new Error('missing localDescription');
+    if (this._signal !== signal || signal?.readyState !== 1) {
+      throw new Error('signaling unavailable after ICE gather');
+    }
+    signal.send(JSON.stringify({
+      __v3: 'offer',
+      description: pc.localDescription,
+      version: '3.0.0',
+      rtcGeneration: generation,
+    }));
+  } catch (err) {
+    if (current()) this._rtcStarted = false;
+    throw err;
+  }
+};
+
+proto._acceptAnswer = async function generationAwareAcceptAnswer(description) {
+  if (!description || this._closed) return;
+  const answerGeneration = Number(description.v3Generation);
+  if (Number.isFinite(answerGeneration) && answerGeneration !== Number(this._v3RtcGeneration || 0)) return;
+  const pc = this._pc;
+  if (!pc || pc.signalingState === 'closed') return;
+  const answer = {
+    type: description.type,
+    sdp: description.sdp,
+  };
+  await pc.setRemoteDescription(answer);
+};
 
 proto._markOpen = function patchedMarkOpen() {
   const result = originalMarkOpen.call(this);
@@ -124,6 +226,7 @@ proto._finalClose = function patchedFinalClose(code = 1006, reason = '', wasClea
     return;
   }
   clearRtcRetry(this);
+  invalidateRtc(this);
   activeSockets.delete(this);
   return originalFinalClose.call(this, code, reason, wasClean);
 };
@@ -158,6 +261,9 @@ proto.send = function patchedSend(data) {
   const type = typeof packet?.t === 'string' ? packet.t : '';
   if (type === 'pos') this._v3LastPositionPacket = data;
 
+  // v2.8 intentionally flushes position immediately before proximity-sensitive actions.
+  // Two DataChannels would otherwise lose the original WebSocket ordering guarantee, so in
+  // direct mode the latest position + action are sent on the same reliable control stream.
   if (this._direct && POSITION_SYNC_TYPES.has(type)) {
     const position = this._v3LastPositionPacket;
     const control = this._control;
@@ -183,6 +289,7 @@ proto.send = function patchedSend(data) {
 
 proto.close = function patchedClose(code = 1000, reason = '') {
   clearRtcRetry(this);
+  invalidateRtc(this);
   activeSockets.delete(this);
   return originalClose.call(this, code, reason);
 };
@@ -205,5 +312,5 @@ try {
   connection?.addEventListener?.('change', () => refreshAllRtc('network-interface-change'));
 } catch (_) {}
 
-console.log('DTAM v3 transport resilience enabled · dynamic IPv4/IPv6 ICE + ordered action sync');
+console.log('DTAM v3 transport resilience enabled · generation-fenced dynamic ICE + ordered action sync');
 })();
