@@ -51,8 +51,8 @@ includes(src,"function sendAction(payload,syncPosition=true)",'critical actions 
 includes(src,"const REMOTE_PREDICTION_MAX_MS = 80",'remote movement prediction must be bounded');
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
-includes(html,'/styles.css?v=2.8','only canonical v2.8 stylesheet must be loaded');
-includes(html,'/game.js?v=2.8','v2.8 JavaScript must be loaded');
+includes(html,'/styles.css?v=2.8.1','v2.8.1 cache-busted stylesheet must be loaded');
+includes(html,'/game.js?v=2.8.1','v2.8.1 cache-busted JavaScript must be loaded');
 includes(html,'maxlength="2"','room input must be two digits');
 includes(html,'pattern="[0-9]{2}"','room input must validate two digits');
 excludes(html,'gameplay-2.','legacy versioned CSS must not be loaded');
