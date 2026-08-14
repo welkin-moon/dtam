@@ -79,7 +79,7 @@ Neither the server's private IPv4, public IPv4/NAT mapping, public IPv6, nor IPv
 - `edge.json`'s `udp_bind` values are only an emergency fallback if interface enumeration yields no usable address; normal operation does not pin current addresses into config.
 - STUN-derived server-reflexive candidates are regenerated on each negotiation, so a changed public IPv4 NAT mapping is not persisted in config.
 - IPv6 prefix/privacy-address changes are handled the same way: old candidates may die, then a replacement peer enumerates and binds the current IPv6 addresses.
-- Browser `online` / network-interface change signals can proactively trigger replacement ICE negotiation while the WSS fallback remains connected.
+- ICE `disconnected` / `failed` drives replacement when a live path actually breaks. Browser `online` and BFCache restore can also proactively retry after connectivity/page restoration; generic network-quality changes do not force needless RTC churn.
 - The Edge `node_id`, DNS endpoint, room number, player id and resume token are independent of any particular IP address.
 
 There is intentionally no updater that writes a newly observed IP into `edge.json`, Cloudflare DNS, room files or player state.
@@ -130,7 +130,8 @@ A later core/client cleanup may move this synchronization into the canonical gam
 - Edge sessions are capped, internal signal/Core queues are bounded, and each DataChannel has a 1 MiB send-buffer limit.
 - `dtam-fast` uses non-blocking enqueue/drop semantics on the Edge in both directions; reliable control keeps ordered back-pressure semantics.
 - Incoming `CF-Connecting-IP` is parsed as an IP address and forwarded across the trusted loopback hop so the existing v2.8 Core per-IP limiter retains its original meaning.
-- ICE negotiation runs outside the signaling read loop and only one current negotiation task is kept per Edge session; a newer offer aborts/supersedes the previous negotiation.
+- ICE negotiation runs outside the signaling read loop and only one current negotiation task is kept per Edge session; a newer accepted offer aborts/supersedes the previous negotiation.
+- RTC offers are rate-limited per Edge session: accepted offers must be at least 750 ms apart and no more than 12 are accepted in a rolling 60-second window. This protects expensive PeerConnection/STUN setup without blocking the browser's normal one-second-or-longer recovery backoff.
 
 ## Multi-node preparation
 
