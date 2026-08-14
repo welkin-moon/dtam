@@ -13,6 +13,7 @@ const originalSend = proto.send;
 const originalClose = proto.close;
 const activeSockets = new Set();
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 15000, 30000];
+const RTC_HANDSHAKE_TIMEOUT_MS = 20000;
 const POSITION_SYNC_TYPES = new Set([
   'emergency',
   'vent',
@@ -66,7 +67,9 @@ function clearRtcRetry(socket) {
 function invalidateRtc(socket) {
   socket._v3RtcGeneration = Number(socket._v3RtcGeneration || 0) + 1;
   clearTimeout(socket._disconnectTimer);
+  clearTimeout(socket._v3RtcHandshakeTimer);
   socket._disconnectTimer = null;
+  socket._v3RtcHandshakeTimer = null;
 }
 
 async function rebuildRtc(socket, trigger = 'network-change') {
@@ -193,6 +196,12 @@ proto._startRtc = async function generationAwareStartRtc() {
       version: '3.0.0',
       rtcGeneration: generation,
     }));
+    clearTimeout(this._v3RtcHandshakeTimer);
+    this._v3RtcHandshakeTimer = setTimeout(() => {
+      if (!current() || this._direct) return;
+      this._rtcStarted = false;
+      this._setDirect(false, 'WebRTC 协商超时，继续 Tunnel');
+    }, RTC_HANDSHAKE_TIMEOUT_MS);
   } catch (err) {
     if (current()) this._rtcStarted = false;
     throw err;
@@ -235,10 +244,21 @@ proto._setDirect = async function patchedSetDirect(value, reason = '') {
   const wasDirect = !!this._direct;
   const result = await originalSetDirect.call(this, value, reason);
   if (value) {
+    clearTimeout(this._v3RtcHandshakeTimer);
+    this._v3RtcHandshakeTimer = null;
     clearRtcRetry(this);
     this._v3RtcRetryAttempt = 0;
     const diagnostics = window.__DTAM_V3_TRANSPORT__;
     if (diagnostics) diagnostics.backup = this._signal?.readyState === 1 ? 'online' : 'offline';
+    return result;
+  }
+
+  // Closing the previous generation causes the server to announce fallback before the new
+  // non-trickle offer has necessarily finished gathering. Do not restart the replacement
+  // from that stale signal. A real current-generation negotiation failure is covered by
+  // local ICE failure/error callbacks or the explicit handshake timeout above.
+  const pcState = String(this._pc?.connectionState || '');
+  if (!wasDirect && this._rtcStarted && (pcState === 'new' || pcState === 'connecting')) {
     return result;
   }
 
