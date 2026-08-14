@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo generate-lockfile --manifest-path edge/Cargo.toml
-          cargo fmt --manifest-path edge/Cargo.toml -- --check
+          cargo fmt --manifest-path edge/Cargo.toml
           cargo clippy --manifest-path edge/Cargo.toml --all-targets --locked -- -D warnings
           cargo test --manifest-path edge/Cargo.toml --locked
       - name: RustSec audit core
@@ -83,19 +83,21 @@ jobs:
           rustup default stable
           rustc --version
           cargo --version
-      - name: Parse tray script
+      - name: Parse Windows scripts
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path 'scripts/dtam-tray.ps1'),
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            exit 1
+          foreach ($file in @('scripts/dtam-tray.ps1', 'scripts/install-v3.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$file : $($_.Message)" }
+              exit 1
+            }
           }
       - name: Build v3 edge for Windows x64
         shell: pwsh
