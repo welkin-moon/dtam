@@ -22,6 +22,7 @@ jobs:
           set -euo pipefail
           node --check game.js
           node --check v3-bootstrap.js
+          node --check v3-resilience.js
           cp worker.js /tmp/dtam-worker.mjs
           node --check /tmp/dtam-worker.mjs
           node scripts/test.cjs
