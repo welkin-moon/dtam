@@ -11,7 +11,7 @@ v3 is a **new generation based on the v2.8 gameplay core**. It is not the histor
 - Work with NAT/firewall setups where both sides must send traffic before a UDP pinhole becomes usable.
 - Treat server/client IPv4 and IPv6 addresses as dynamic transport state, never stable node identity.
 - Keep the transport layer ready for a second server/node later.
-- Add a lightweight Windows tray companion without moving the SYSTEM server into the interactive desktop session.
+- Add a low-memory native Windows tray companion without moving the SYSTEM server into the interactive desktop session.
 
 ## Runtime topology
 
@@ -68,6 +68,7 @@ The Rust core remains authoritative on every path. Direct mode does **not** make
 Neither the server's private IPv4, public IPv4/NAT mapping, public IPv6, nor IPv6 privacy address is treated as permanent configuration.
 
 - Before each server-side WebRTC negotiation, `dtam-edge` enumerates the machine's current non-loopback IPv4/IPv6 addresses.
+- Only interfaces currently reported operationally Up are considered for automatic binding.
 - It binds ephemeral UDP ports to the selected **concrete** interface addresses, rather than assuming a wildcard socket will magically become a LAN host candidate.
 - Private IPv4 (`10/8`, `172.16/12`, `192.168/16`) is prioritized, followed by IPv6 ULA/global addresses; the candidate bind list is capped to keep per-connection socket use bounded.
 - Link-local/loopback/multicast/unspecified addresses are excluded from automatic binding. This avoids unusable `0.0.0.0`, `::`, `127.0.0.1`, `::1`, `169.254/16`, and scope-dependent `fe80::/10` candidates.
@@ -131,19 +132,21 @@ Recommended production split:
 
 - `DTAM Rust Server`: SYSTEM, AtStartup, existing v2.8 authoritative core.
 - `DTAM v3 Edge`: SYSTEM, AtStartup, `dtam-edge.exe`.
-- `DTAM v3 Tray`: interactive user (`meteo`), AtLogOn, hidden PowerShell running `scripts/dtam-tray.ps1`.
+- `DTAM v3 Tray`: interactive user (`meteo`), AtLogOn, native `dtam-tray.exe`.
 - `Cloudflared`: existing Automatic Windows service.
 
 The tray is deliberately separate because a SYSTEM process in Session 0 cannot reliably provide an interactive notification-area icon in the logged-in desktop session.
 
-The tray polls loopback health endpoints and re-reads the current IPv4/IPv6 addresses every five seconds. It shows Core/Edge state and Edge session count; exiting the tray does not stop either server.
+The initial PowerShell/WinForms tray prototype was removed before rollout. The production v3 tray is a Rust Windows-GUI binary using a native notification-area library and a Win32 message loop; it does not keep PowerShell, CLR or WinForms resident. It polls the two loopback health endpoints from a background thread, re-reads current Up-interface IPv4/IPv6 addresses every five seconds, and shows Core/Edge state plus Edge session count. Exiting the tray does not stop either server.
+
+The one-shot `scripts/install-v3.ps1` remains PowerShell because it performs administrative installation tasks (Rust update/build, firewall and Scheduled Tasks). It is not a resident server process.
 
 ## Planned production paths
 
 ```text
 D:\server\bin\dtam-server.exe
 D:\server\bin\dtam-edge.exe
-D:\server\bin\dtam-tray.ps1
+D:\server\bin\dtam-tray.exe
 D:\server\config\server.json
 D:\server\config\edge.json
 D:\server\data\rooms\
