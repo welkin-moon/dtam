@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use axum::{
+    Json, Router,
     extract::{
         RawQuery, State,
         ws::{Message as AxumMessage, WebSocket, WebSocketUpgrade},
@@ -7,7 +8,6 @@ use axum::{
     http::{HeaderMap, StatusCode, header::ORIGIN},
     response::{IntoResponse, Response},
     routing::get,
-    Json, Router,
 };
 use bytes::BytesMut;
 use futures_util::{SinkExt, StreamExt};
@@ -16,9 +16,8 @@ use serde_json::{Value, json};
 use std::{
     env,
     error::Error,
-    fs,
-    io,
-    net::SocketAddr,
+    fs, io,
+    net::{IpAddr, SocketAddr},
     path::PathBuf,
     sync::{
         Arc,
@@ -29,15 +28,11 @@ use std::{
 use tokio::{
     net::TcpListener,
     sync::{RwLock, mpsc},
-    time::timeout,
+    time::{sleep, timeout},
 };
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::{
-        Message as TungsteniteMessage,
-        client::IntoClientRequest,
-        http::HeaderValue,
-    },
+    tungstenite::{Message as TungsteniteMessage, client::IntoClientRequest, http::HeaderValue},
 };
 use webrtc::{
     data_channel::{DataChannel, DataChannelEvent},
@@ -54,6 +49,7 @@ const MAX_APP_MESSAGE_BYTES: usize = 16 * 1024;
 const SIGNAL_QUEUE: usize = 384;
 const CORE_QUEUE: usize = 256;
 const ICE_GATHER_WAIT: Duration = Duration::from_secs(6);
+const SIGNAL_KEEPALIVE: Duration = Duration::from_secs(20);
 
 type AnyError = Box<dyn Error + Send + Sync>;
 
@@ -116,7 +112,10 @@ impl PeerConnectionEventHandler for EdgePeerHandler {
     }
 
     async fn on_connection_state_change(&self, state: RTCPeerConnectionState) {
-        if matches!(state, RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed) {
+        if matches!(
+            state,
+            RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed
+        ) {
             let _ = self.signal_tx.try_send(
                 json!({"__v3":"transport","mode":"fallback","reason":format!("peer {state}")})
                     .to_string(),
@@ -148,9 +147,8 @@ impl PeerConnectionEventHandler for EdgePeerHandler {
                             locked.direct_ready()
                         };
                         if direct {
-                            let _ = signal_tx.try_send(
-                                json!({"__v3":"transport","mode":"direct"}).to_string(),
-                            );
+                            let _ = signal_tx
+                                .try_send(json!({"__v3":"transport","mode":"direct"}).to_string());
                         }
                     }
                     Some(DataChannelEvent::OnMessage(message)) => {
@@ -207,6 +205,15 @@ fn origin_from_headers(headers: &HeaderMap, config: &Config) -> Option<String> {
         .then_some(origin)
 }
 
+fn connecting_ip_from_headers(headers: &HeaderMap) -> String {
+    headers
+        .get("cf-connecting-ip")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<IpAddr>().ok())
+        .map(|ip| ip.to_string())
+        .unwrap_or_else(|| "unknown".into())
+}
+
 async fn health(State(state): State<AppState>) -> Json<Value> {
     Json(json!({
         "ok": true,
@@ -228,6 +235,7 @@ async fn edge_upgrade(
     let Some(origin) = origin_from_headers(&headers, &state.config) else {
         return StatusCode::FORBIDDEN.into_response();
     };
+    let connecting_ip = connecting_ip_from_headers(&headers);
     if state.active_sessions.load(Ordering::Relaxed) >= MAX_EDGE_SESSIONS {
         return (StatusCode::SERVICE_UNAVAILABLE, "edge_session_limit").into_response();
     }
@@ -237,14 +245,20 @@ async fn edge_upgrade(
     }
 
     ws.max_message_size(MAX_SIGNAL_MESSAGE_BYTES)
-        .on_upgrade(move |socket| edge_session(socket, query, origin, state))
+        .on_upgrade(move |socket| edge_session(socket, query, origin, connecting_ip, state))
         .into_response()
 }
 
-async fn edge_session(socket: WebSocket, query: String, origin: String, state: AppState) {
+async fn edge_session(
+    socket: WebSocket,
+    query: String,
+    origin: String,
+    connecting_ip: String,
+    state: AppState,
+) {
     state.active_sessions.fetch_add(1, Ordering::Relaxed);
     let node = state.config.node_id.clone();
-    if let Err(err) = run_edge_session(socket, query, origin, state.clone()).await {
+    if let Err(err) = run_edge_session(socket, query, origin, connecting_ip, state.clone()).await {
         eprintln!("[dtam-edge:{node}] session ended: {err}");
     }
     state.active_sessions.fetch_sub(1, Ordering::Relaxed);
@@ -254,6 +268,7 @@ async fn run_edge_session(
     signal_socket: WebSocket,
     query: String,
     origin: String,
+    connecting_ip: String,
     state: AppState,
 ) -> Result<(), AnyError> {
     let core_url = if query.is_empty() {
@@ -265,6 +280,10 @@ async fn run_edge_session(
     request
         .headers_mut()
         .insert("Origin", HeaderValue::from_str(&origin)?);
+    request.headers_mut().insert(
+        "cf-connecting-ip",
+        HeaderValue::from_str(&connecting_ip)?,
+    );
     let (core_socket, _) = connect_async(request).await?;
 
     let (mut signal_sink, mut signal_stream) = signal_socket.split();
@@ -276,7 +295,25 @@ async fn run_edge_session(
 
     let signal_writer = tokio::spawn(async move {
         while let Some(text) = signal_rx.recv().await {
-            if signal_sink.send(AxumMessage::Text(text.into())).await.is_err() {
+            if signal_sink
+                .send(AxumMessage::Text(text.into()))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+
+    let keepalive_tx = signal_tx.clone();
+    let signal_keepalive = tokio::spawn(async move {
+        loop {
+            sleep(SIGNAL_KEEPALIVE).await;
+            if keepalive_tx
+                .send(json!({"__v3":"info","keepalive":true}).to_string())
+                .await
+                .is_err()
+            {
                 break;
             }
         }
@@ -397,6 +434,7 @@ async fn run_edge_session(
     }
     core_reader.abort();
     core_writer.abort();
+    signal_keepalive.abort();
     signal_writer.abort();
     Ok(())
 }
@@ -439,11 +477,7 @@ async fn send_app_to_browser(
     };
 
     if let Some(channel) = channel {
-        if channel
-            .send(BytesMut::from(text.as_bytes()))
-            .await
-            .is_ok()
-        {
+        if channel.send(BytesMut::from(text.as_bytes())).await.is_ok() {
             return;
         }
     }
