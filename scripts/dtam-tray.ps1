@@ -42,20 +42,31 @@ function Get-HealthJson {
     }
 }
 
-function Get-LanAddressText {
+function Get-NetworkAddressText {
     try {
-        $addresses = Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred -ErrorAction Stop |
+        $ipv4 = Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred -ErrorAction Stop |
             Where-Object {
                 $_.IPAddress -notlike '127.*' -and
                 ($_.IPAddress -like '10.*' -or $_.IPAddress -like '192.168.*' -or $_.IPAddress -match '^172\.(1[6-9]|2[0-9]|3[01])\.')
             } |
-            Select-Object -ExpandProperty IPAddress -Unique
-        if ($addresses) {
-            return ($addresses -join ', ')
-        }
+            Select-Object -ExpandProperty IPAddress -Unique |
+            Select-Object -First 3
+
+        $ipv6 = Get-NetIPAddress -AddressFamily IPv6 -AddressState Preferred -ErrorAction Stop |
+            Where-Object {
+                $_.IPAddress -ne '::1' -and
+                $_.IPAddress -notmatch '^fe80:'
+            } |
+            Select-Object -ExpandProperty IPAddress -Unique |
+            Select-Object -First 3
+
+        $v4Text = if ($ipv4) { $ipv4 -join ', ' } else { '无私网 IPv4' }
+        $v6Text = if ($ipv6) { $ipv6 -join ', ' } else { '无可用 IPv6' }
+        return "IPv4: $v4Text · IPv6: $v6Text"
     }
-    catch {}
-    return '无私网 IPv4'
+    catch {
+        return 'IPv4/IPv6: 无法读取'
+    }
 }
 
 function Open-PathSafe {
@@ -75,7 +86,7 @@ $statusItem.Enabled = $false
 [void]$menu.Items.Add($statusItem)
 
 $networkItem = New-Object System.Windows.Forms.ToolStripMenuItem
-$networkItem.Text = 'LAN: ' + (Get-LanAddressText)
+$networkItem.Text = Get-NetworkAddressText
 $networkItem.Enabled = $false
 [void]$menu.Items.Add($networkItem)
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
@@ -117,6 +128,8 @@ function Update-TrayState {
     if ($script:stopping) {
         return
     }
+
+    $networkItem.Text = Get-NetworkAddressText
 
     $core = Get-HealthJson $coreHealth
     $edge = Get-HealthJson $edgeHealth
@@ -167,10 +180,7 @@ function Update-TrayState {
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = $pollMs
 $timer.Add_Tick({ Update-TrayState })
-$refreshItem.Add_Click({
-    $networkItem.Text = 'LAN: ' + (Get-LanAddressText)
-    Update-TrayState
-})
+$refreshItem.Add_Click({ Update-TrayState })
 
 $notify.Add_DoubleClick({ Start-Process $gameUrl })
 $exitItem.Add_Click({
