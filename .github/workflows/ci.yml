@@ -17,7 +17,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Verify canonical sources
@@ -54,6 +54,12 @@ jobs:
           cargo fmt --manifest-path edge/Cargo.toml -- --check
           cargo clippy --manifest-path edge/Cargo.toml --all-targets --locked -- -D warnings
           cargo test --manifest-path edge/Cargo.toml --locked
+      - name: Verify Rust v3 tray source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path tray/Cargo.toml
+          cargo fmt --manifest-path tray/Cargo.toml -- --check
       - name: RustSec audit core
         uses: rustsec/audit-check@v2.0.0
         with:
@@ -64,6 +70,11 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: edge
+      - name: RustSec audit v3 tray
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: tray
       - name: Reject legacy build layers
         shell: bash
         run: |
@@ -76,9 +87,9 @@ jobs:
           test ! -e gameplay-2.6.css
           test ! -e RELEASE-2.6.md
 
-  windows-edge:
+  windows-v3:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - name: Update stable Rust toolchain
@@ -86,32 +97,36 @@ jobs:
         run: |
           rustup update stable --no-self-update
           rustup default stable
+          rustup component add rustfmt
           rustc --version
           cargo --version
-      - name: Parse Windows scripts
+      - name: Parse installer script
         shell: pwsh
         run: |
-          foreach ($file in @('scripts/dtam-tray.ps1', 'scripts/install-v3.ps1')) {
-            $tokens = $null
-            $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path $file),
-              [ref]$tokens,
-              [ref]$errors
-            ) | Out-Null
-            if ($errors.Count -gt 0) {
-              $errors | ForEach-Object { Write-Error "$file : $($_.Message)" }
-              exit 1
-            }
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'scripts/install-v3.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
           }
-      - name: Build v3 edge for Windows x64
+      - name: Build v3 Windows x64 binaries
         shell: pwsh
         run: |
           cargo generate-lockfile --manifest-path edge/Cargo.toml
+          cargo generate-lockfile --manifest-path tray/Cargo.toml
+          cargo fmt --manifest-path tray/Cargo.toml -- --check
           cargo build --release --manifest-path edge/Cargo.toml --locked
-      - name: Upload v3 edge binary
+          cargo build --release --manifest-path tray/Cargo.toml --locked
+      - name: Upload v3 Windows binaries
         uses: actions/upload-artifact@v4
         with:
-          name: dtam-edge-v3-windows-x64
-          path: edge/target/release/dtam-edge.exe
+          name: dtam-v3-windows-x64
+          path: |
+            edge/target/release/dtam-edge.exe
+            tray/target/release/dtam-tray.exe
           if-no-files-found: error
