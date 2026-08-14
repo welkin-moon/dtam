@@ -102,17 +102,25 @@ struct EdgePeerHandler {
     core_tx: mpsc::Sender<String>,
     signal_tx: mpsc::Sender<String>,
     gather_tx: mpsc::Sender<()>,
+    rtc_generation: Arc<AtomicUsize>,
+    generation: usize,
 }
 
 #[async_trait]
 impl PeerConnectionEventHandler for EdgePeerHandler {
     async fn on_ice_gathering_state_change(&self, state: RTCIceGatheringState) {
+        if self.rtc_generation.load(Ordering::Acquire) != self.generation {
+            return;
+        }
         if state == RTCIceGatheringState::Complete {
             let _ = self.gather_tx.try_send(());
         }
     }
 
     async fn on_connection_state_change(&self, state: RTCPeerConnectionState) {
+        if self.rtc_generation.load(Ordering::Acquire) != self.generation {
+            return;
+        }
         if matches!(
             state,
             RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed
@@ -125,19 +133,34 @@ impl PeerConnectionEventHandler for EdgePeerHandler {
     }
 
     async fn on_data_channel(&self, dc: Arc<dyn DataChannel>) {
+        if self.rtc_generation.load(Ordering::Acquire) != self.generation {
+            let _ = dc.close().await;
+            return;
+        }
         let label = dc.label().await.unwrap_or_default();
         if label != "dtam-control" && label != "dtam-fast" {
+            let _ = dc.close().await;
             return;
         }
 
         let channels = Arc::clone(&self.channels);
         let core_tx = self.core_tx.clone();
         let signal_tx = self.signal_tx.clone();
+        let rtc_generation = Arc::clone(&self.rtc_generation);
+        let generation = self.generation;
         tokio::spawn(async move {
             let channel_id = dc.id();
             loop {
+                if rtc_generation.load(Ordering::Acquire) != generation {
+                    let _ = dc.close().await;
+                    break;
+                }
                 match dc.poll().await {
                     Some(DataChannelEvent::OnOpen) => {
+                        if rtc_generation.load(Ordering::Acquire) != generation {
+                            let _ = dc.close().await;
+                            break;
+                        }
                         let direct = {
                             let mut locked = channels.write().await;
                             if label == "dtam-control" {
@@ -153,6 +176,9 @@ impl PeerConnectionEventHandler for EdgePeerHandler {
                         }
                     }
                     Some(DataChannelEvent::OnMessage(message)) => {
+                        if rtc_generation.load(Ordering::Acquire) != generation {
+                            break;
+                        }
                         if message.data.len() > MAX_APP_MESSAGE_BYTES {
                             continue;
                         }
@@ -162,21 +188,23 @@ impl PeerConnectionEventHandler for EdgePeerHandler {
                         }
                     }
                     Some(DataChannelEvent::OnClose) | None => {
-                        let mut locked = channels.write().await;
-                        if label == "dtam-control" {
-                            locked.control = None;
-                        } else {
-                            locked.fast = None;
+                        if rtc_generation.load(Ordering::Acquire) == generation {
+                            let mut locked = channels.write().await;
+                            if label == "dtam-control" {
+                                locked.control = None;
+                            } else {
+                                locked.fast = None;
+                            }
+                            drop(locked);
+                            let _ = signal_tx.try_send(
+                                json!({
+                                    "__v3":"transport",
+                                    "mode":"fallback",
+                                    "reason":format!("data channel {label}/{channel_id} closed")
+                                })
+                                .to_string(),
+                            );
                         }
-                        drop(locked);
-                        let _ = signal_tx.try_send(
-                            json!({
-                                "__v3":"transport",
-                                "mode":"fallback",
-                                "reason":format!("data channel {label}/{channel_id} closed")
-                            })
-                            .to_string(),
-                        );
                         break;
                     }
                     _ => {}
@@ -224,6 +252,7 @@ async fn health(State(state): State<AppState>) -> Json<Value> {
         "transport": "webrtc-datachannel+tunnel-fallback",
         "activeSessions": state.active_sessions.load(Ordering::Relaxed),
         "core": state.config.core_ws,
+        "addressing": "dynamic-ice",
     }))
 }
 
@@ -293,6 +322,7 @@ async fn run_edge_session(
     let (core_tx, mut core_rx) = mpsc::channel::<String>(CORE_QUEUE);
     let (done_tx, mut done_rx) = mpsc::channel::<()>(2);
     let channels = Arc::new(RwLock::new(RtcChannels::default()));
+    let rtc_generation = Arc::new(AtomicUsize::new(0));
 
     let signal_writer = tokio::spawn(async move {
         while let Some(text) = signal_rx.recv().await {
@@ -340,7 +370,8 @@ async fn run_edge_session(
                 "__v3":"ready",
                 "version":VERSION,
                 "nodeId":state.config.node_id,
-                "rtc":true
+                "rtc":true,
+                "dynamicIce":true
             })
             .to_string(),
         )
@@ -395,12 +426,19 @@ async fn run_edge_session(
                                 "ping" => {
                                     let _ = signal_tx.try_send(json!({"__v3":"pong"}).to_string());
                                 }
-                                "offer" if peer.is_none() => {
+                                "offer" => {
+                                    let generation = rtc_generation.fetch_add(1, Ordering::AcqRel) + 1;
+                                    if let Some(old_peer) = peer.take() {
+                                        let _ = old_peer.close().await;
+                                    }
+                                    *channels.write().await = RtcChannels::default();
                                     match negotiate_peer(
                                         control.value.get("description").cloned(),
                                         Arc::clone(&channels),
                                         core_tx.clone(),
                                         signal_tx.clone(),
+                                        Arc::clone(&rtc_generation),
+                                        generation,
                                         &state.config,
                                     ).await {
                                         Ok(pc) => peer = Some(pc),
@@ -450,6 +488,7 @@ async fn run_edge_session(
         }
     }
 
+    rtc_generation.fetch_add(1, Ordering::AcqRel);
     if let Some(pc) = peer {
         let _ = pc.close().await;
     }
@@ -515,6 +554,8 @@ async fn negotiate_peer(
     channels: Arc<RwLock<RtcChannels>>,
     core_tx: mpsc::Sender<String>,
     signal_tx: mpsc::Sender<String>,
+    rtc_generation: Arc<AtomicUsize>,
+    generation: usize,
     config: &Config,
 ) -> Result<Arc<dyn PeerConnection>, AnyError> {
     let description = description.ok_or("missing RTC description")?;
@@ -526,6 +567,8 @@ async fn negotiate_peer(
         core_tx,
         signal_tx: signal_tx.clone(),
         gather_tx,
+        rtc_generation,
+        generation,
     });
     let ice_servers = if config.stun_servers.is_empty() {
         Vec::new()
