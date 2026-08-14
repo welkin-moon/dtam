@@ -9,9 +9,13 @@
 - 新增独立 Rust `dtam-edge` 网关；浏览器先通过 Cloudflare Tunnel 建立信令与兼容通道，再尝试 WebRTC ICE/DataChannel 直达中心节点。
 - v3 不是玩家 mesh P2P：v2.8 Rust Core 继续作为唯一权威状态机，Edge 只替换/复用消息传输路径。
 - 新增 `dtam-control` ordered/reliable 与 `dtam-fast` unordered/no-retransmit 两条 DataChannel；位置与心跳可丢弃旧包，动作/聊天/任务继续可靠传输。
-- 同一 LAN 的客户端可通过 ICE host candidate 使用 `10/8`、`172.16/12`、`192.168/16` 私网地址直连，不需要通过公网或 Cloudflare hairpin。
+- 同一 LAN 的客户端可通过真实 ICE host candidate 使用当前 `10/8`、`172.16/12`、`192.168/16` 私网地址直连，不需要通过公网或 Cloudflare hairpin。
+- 服务端每次 RTC 协商重新枚举当前 operationally-Up 的 IPv4/IPv6 网卡地址并绑定临时 UDP 端口；公网 IPv4 NAT 映射通过 STUN 重新发现，不把任何动态地址写进节点身份或持久配置。
+- IPv4 DHCP、NAT 映射变化、IPv6 privacy address/prefix 变化导致旧直连失效时，只要 WSS/Tunnel 仍在，就替换 WebRTC PeerConnection 而保留同一 Core 房间/玩家会话。
+- RTC generation fencing 阻止旧 PeerConnection/DataChannel 的晚到事件污染新连接。
+- Tunnel 在直连成功后若临时断开，不会主动关闭仍健康的 DataChannel/Core 会话；两条路径都失效时才进入原 v2.8 resume 流程。
 - NAT2/状态防火墙场景通过双方 ICE connectivity check 主动打洞，不把公网 IPv6 首包可达或路由器 IPv4 DMZ 作为前提。
-- DataChannel 失败/断开自动回到 Edge WSS/Tunnel；Edge 本身不可用时继续回到原 `rt-d1` v2.8 WebSocket。
+- Edge 本身不可用时继续回到原 `rt-d1` v2.8 WebSocket。
 - 浏览器 endpoint 列表与 Edge `node_id` 为后续双服务端路由预留接口；3.0 仍保持单权威房间节点。
 
 ### 坐标一致性
@@ -21,15 +25,21 @@
 
 ### Windows 服务端体验
 
-- 新增 `scripts/dtam-tray.ps1` Windows 通知区 companion，显示 Core/Edge 在线状态、Edge 会话数和 LAN 地址，并可打开游戏、`D:\server` 与日志目录。
-- 托盘与 SYSTEM 后端进程分离，计划以登录用户任务启动，避免 Windows Session 0 隔离导致后台服务无法正常显示通知区图标。
-- CI 新增 Windows x64 `dtam-edge.exe` release build 和托盘 PowerShell 语法检查。
+- 新增 native Rust `dtam-tray.exe` Windows 通知区 companion，显示 Core/Edge 在线状态、Edge 会话数和当前 IPv4/IPv6，并可打开游戏、`D:\server` 与日志目录。
+- 移除常驻 PowerShell/WinForms 托盘原型；托盘使用 Windows GUI subsystem 与原生消息循环，避免在低内存服务器上长期保留 PowerShell/CLR/WinForms 运行时。
+- 托盘与 SYSTEM 后端进程分离，以登录用户任务启动，避免 Windows Session 0 隔离导致后台服务无法正常显示通知区图标。
+- 新增一次性 `scripts/install-v3.ps1`，可更新 stable Rust、构建 Edge/Tray、安装 SYSTEM/AtStartup Edge、用户/AtLogOn Tray 和按程序放行的 UDP 防火墙规则。
+- 原地升级前安装器先停止已有 Edge/Tray 计划任务与残留进程，避免计划任务自动重启旧二进制后与覆盖文件竞争。
+- CI 在 Windows x64 真正 release-build `dtam-edge.exe` 和 `dtam-tray.exe`，并把两者作为同一 v3 Windows artifact 上传。
 
-### 部署安全
+### 部署安全与资源边界
 
-- v2.8 Core `127.0.0.1:28727` 继续保持 loopback-only；v3 Edge HTTP/WSS 信令端口也计划只监听 loopback，由现有 Cloudflared 转发。
-- 直连仅需要按 `dtam-edge.exe` 程序放行 WebRTC UDP，不公开 Core TCP 游戏端口。
+- v2.8 Core `127.0.0.1:28727` 继续保持 loopback-only；v3 Edge HTTP/WSS 信令端口也只计划监听 loopback，由现有 Cloudflared 转发。
+- 直连仅需要按 `dtam-edge.exe` 程序放行 WebRTC UDP，不公开 Core TCP 游戏端口；防火墙规则不绑定动态 IP。
+- Edge 继续校验正式网页 Origin、限制 signal/app 消息大小、总会话数并使用有界队列；WebRTC 每 DataChannel send buffer 限制为 1 MiB。
+- Edge 将经 Cloudflare 验证/传入的 `CF-Connecting-IP` 转给 loopback Core，保留 v2.8 原有的每 IP 并发限制语义。
 - Calls/Realtime 语音 Secret 继续只保存在原锁定的 `server.json`，Edge 配置不复制语音 Secret。
+- Core、Edge、Tray 在 CI 中分别接受 Rust/格式/安全检查；v3 使用当前 stable Rust（开发时 GitHub runner 为 Rust 1.97.1）。
 
 ## 2.8 — 2026-08-14
 
