@@ -8,7 +8,7 @@
 
 **v3（基于 v2.8 的新一代；不是历史上的旧 v3）**
 
-v3 保留 v2.8 已加固的 Rust 权威游戏核心，在它前面新增一个轻量 Rust Edge 网络层：浏览器先通过 Cloudflare Tunnel 完成加入房间与 WebRTC 信令，ICE/DataChannel 建链成功后，实时游戏流量优先直接到上海中心节点；直连失败或中断时自动回落到 Tunnel。
+v3 保留 v2.8 已加固的 Rust 权威游戏核心，在它前面新增一个轻量 Rust Edge 网络层：浏览器先通过 Cloudflare Tunnel 完成加入房间与 WebRTC 信令，ICE/DataChannel 建链成功后，实时游戏流量优先直接到中心节点；直连失败或中断时自动回落到 Tunnel。
 
 ```text
 Cloudflare Pages
@@ -30,13 +30,15 @@ Cloudflare Pages
 - **不是玩家之间 mesh P2P。** Rust 中心节点仍然是唯一权威状态机。
 - `dtam-control` 使用 ordered/reliable DataChannel 传输动作、聊天、任务、投票等可靠消息。
 - `dtam-fast` 使用 unordered + `maxRetransmits=0` 传输位置/心跳等过期即无价值的数据。
-- 同一 LAN 内的浏览器可以通过 ICE host candidate 直接使用 `10.x` / `172.16-31.x` / `192.168.x` 地址，不需要公网回环。
-- NAT/防火墙环境下由 ICE 双向 connectivity checks 尝试建立可用 UDP 路径，不依赖路由器 IPv4 “DMZ 主机”作为核心机制。
+- 同一 LAN 内的浏览器可以通过 ICE host candidate 直接使用当前 `10.x` / `172.16-31.x` / `192.168.x` 地址，不需要公网回环。
+- 服务端 IPv4、IPv6、NAT 映射都视为动态路径信息：每次 RTC 协商重新枚举当前 Up 网卡地址并重新做 STUN，不把地址写入节点身份或持久配置。
+- NAT/状态防火墙环境下由 ICE 双向 connectivity checks 尝试建立可用 UDP 路径，不依赖路由器 IPv4 “DMZ 主机”作为核心机制。
+- DataChannel 中断但 Tunnel 仍连接时，只重建 WebRTC transport，不重新加入 Core 房间；Tunnel 在直连成功后临时掉线也不会主动杀掉仍健康的直连。
 - v3 Edge 不可用时，浏览器还会最终回落到原来的 `wss://rt-d1.lunarlab.uk/ws` v2.8 路径。
 - 浏览器 endpoint 列表与 Edge `node_id` 已为后续双服务端路由预留接口；v3.0 本身仍是单权威节点。
 - Cloudflare Realtime/Calls SFU 继续承载现有语音媒体；v3 DataChannel 只负责游戏实时消息。
 - 修复 v2.8 开局重新分配 spawn 后客户端继续保留旧 `myPos` 所造成的多客户端坐标世界不一致；普通移动仍保留本地预测。
-- Windows 新增独立托盘 companion，显示 Core/Edge 状态、Edge 会话数和 LAN 地址；托盘运行于登录用户会话，后台 Core/Edge 仍可由 SYSTEM 自启。
+- Windows 新增 **native Rust 托盘 companion**，显示 Core/Edge 状态、Edge 会话数和当前 IPv4/IPv6；托盘运行于登录用户会话，后台 Core/Edge 仍由 SYSTEM 自启。
 
 完整设计见 [`docs/V3-ARCHITECTURE.md`](docs/V3-ARCHITECTURE.md)。
 
@@ -60,7 +62,8 @@ v2.8 已有的关键加固继续作为 v3 游戏核心基线：
 .
 ├── index.html
 ├── game.js                    # v2.8 gameplay client / protocol
-├── v3-bootstrap.js            # v3 hybrid WebSocket/DataChannel transport facade
+├── v3-bootstrap.js            # v3 WebSocket/DataChannel transport facade
+├── v3-resilience.js           # fallback、动态网络/ICE replacement
 ├── styles.css
 ├── _headers
 ├── server/
@@ -72,9 +75,12 @@ v2.8 已有的关键加固继续作为 v3 游戏核心基线：
 │   ├── Cargo.toml
 │   ├── config.example.json
 │   └── src/main.rs            # v3 WebRTC Edge / Tunnel gateway
+├── tray/
+│   ├── Cargo.toml
+│   └── src/main.rs            # native Windows notification-area companion
 ├── scripts/
 │   ├── test.cjs
-│   └── dtam-tray.ps1          # Windows interactive tray companion
+│   └── install-v3.ps1         # one-shot Windows install/upgrade helper
 ├── docs/V3-ARCHITECTURE.md
 ├── worker.js                   # v2.7 legacy rollback，不在生产请求路径
 ├── CHANGELOG.md
@@ -89,6 +95,7 @@ v2.8 已有的关键加固继续作为 v3 游戏核心基线：
 ```bash
 node --check game.js
 node --check v3-bootstrap.js
+node --check v3-resilience.js
 cp worker.js /tmp/dtam-worker.mjs && node --check /tmp/dtam-worker.mjs
 node scripts/test.cjs
 ```
@@ -112,6 +119,8 @@ cargo test --manifest-path edge/Cargo.toml --locked
 cargo build --manifest-path edge/Cargo.toml --release --locked
 ```
 
+v3 Windows 托盘在 Windows x64 CI 上执行 `rustfmt --check` 与 release build；Linux CI 同时生成其 lockfile 并执行 RustSec。
+
 ## v3 部署目标
 
 生产机目标目录仍全部放在 `D:\server`：
@@ -119,7 +128,7 @@ cargo build --manifest-path edge/Cargo.toml --release --locked
 ```text
 D:\server\bin\dtam-server.exe
 D:\server\bin\dtam-edge.exe
-D:\server\bin\dtam-tray.ps1
+D:\server\bin\dtam-tray.exe
 D:\server\config\server.json
 D:\server\config\edge.json
 D:\server\data\rooms\
@@ -130,10 +139,10 @@ D:\server\logs\
 
 - `DTAM Rust Server`：SYSTEM / AtStartup，现有权威 Core。
 - `DTAM v3 Edge`：SYSTEM / AtStartup，新 WebRTC Edge。
-- `DTAM v3 Tray`：登录用户 `meteo` / AtLogOn，通知区 companion。
+- `DTAM v3 Tray`：登录用户 `meteo` / AtLogOn，native Rust 通知区 companion；使用 Win32 GUI subsystem，不常驻 PowerShell/CLR。
 - `Cloudflared`：继续作为 Windows Automatic service。
 
-Core TCP 端口 `28727` 继续只监听 loopback。Edge 的 HTTP/WSS 信令入口 `28729` 也只给本机 Cloudflared；真正的直连使用 Edge 的 WebRTC UDP sockets，因此 Windows 防火墙应按 **`dtam-edge.exe` 程序**允许需要的入站 UDP，而不是公开 Core TCP 端口。
+Core TCP 端口 `28727` 继续只监听 loopback。Edge 的 HTTP/WSS 信令入口 `28729` 也只给本机 Cloudflared；真正的直连使用 Edge 的 WebRTC UDP sockets，因此 Windows 防火墙按 **`dtam-edge.exe` 程序**允许入站 UDP，而不是公开 Core TCP 端口或绑定某个会变化的 IP。
 
 `edge-d1.lunarlab.uk` 计划由现有 Cloudflare Tunnel 转发到 `http://127.0.0.1:28729`。浏览器始终保留 `rt-d1.lunarlab.uk` 最终回退。
 
@@ -147,7 +156,7 @@ Cloudflare Realtime SFU 的语音用量仍是独立额度。Tunnel 在 v3 中主
 
 游戏 Core 继续负责位置合法性、墙体/速度校验、击杀/任务/投票状态以及幽灵隐私。WebRTC 直连只替换传输路径，不扩大浏览器的游戏权限。普通游戏中的死亡玩家文字只投递给死亡连接；语音目录按接收者过滤，Calls 远端音轨订阅仍由 Rust 代理重新校验。
 
-Calls App secret 只保存在本机锁定的 `server.json`，**禁止提交到仓库**。`edge.json` 只包含节点与网络配置，不需要复制 Calls secret。
+Calls App secret 只保存在本机锁定的 `server.json`，**禁止提交到仓库**。`edge.json` 只包含节点与网络策略，不保存探测到的公网/内网 IPv4 或 IPv6，也不需要复制 Calls secret。
 
 ## License
 
