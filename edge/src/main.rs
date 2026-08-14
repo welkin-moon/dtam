@@ -50,6 +50,7 @@ const SIGNAL_QUEUE: usize = 384;
 const CORE_QUEUE: usize = 256;
 const ICE_GATHER_WAIT: Duration = Duration::from_secs(6);
 const SIGNAL_KEEPALIVE: Duration = Duration::from_secs(20);
+const DIRECT_LIVENESS_POLL: Duration = Duration::from_millis(500);
 
 type AnyError = Box<dyn Error + Send + Sync>;
 
@@ -370,13 +371,19 @@ async fn run_edge_session(
     });
 
     let mut peer: Option<Arc<dyn PeerConnection>> = None;
+    let mut signaling_lost_with_direct = false;
 
     loop {
         tokio::select! {
             _ = done_rx.recv() => break,
             incoming = signal_stream.next() => {
-                let Some(incoming) = incoming else { break };
-                let Ok(incoming) = incoming else { break };
+                let incoming = match incoming {
+                    Some(Ok(message)) => message,
+                    Some(Err(_)) | None => {
+                        signaling_lost_with_direct = channels.read().await.direct_ready();
+                        break;
+                    }
+                };
                 match incoming {
                     AxumMessage::Text(text) => {
                         if text.len() > MAX_SIGNAL_MESSAGE_BYTES {
@@ -388,23 +395,21 @@ async fn run_edge_session(
                                 "ping" => {
                                     let _ = signal_tx.try_send(json!({"__v3":"pong"}).to_string());
                                 }
-                                "offer" => {
-                                    if peer.is_none() {
-                                        match negotiate_peer(
-                                            control.value.get("description").cloned(),
-                                            Arc::clone(&channels),
-                                            core_tx.clone(),
-                                            signal_tx.clone(),
-                                            &state.config,
-                                        ).await {
-                                            Ok(pc) => peer = Some(pc),
-                                            Err(err) => {
-                                                let _ = signal_tx.try_send(json!({
-                                                    "__v3":"transport",
-                                                    "mode":"fallback",
-                                                    "reason":format!("RTC negotiation failed: {err}")
-                                                }).to_string());
-                                            }
+                                "offer" if peer.is_none() => {
+                                    match negotiate_peer(
+                                        control.value.get("description").cloned(),
+                                        Arc::clone(&channels),
+                                        core_tx.clone(),
+                                        signal_tx.clone(),
+                                        &state.config,
+                                    ).await {
+                                        Ok(pc) => peer = Some(pc),
+                                        Err(err) => {
+                                            let _ = signal_tx.try_send(json!({
+                                                "__v3":"transport",
+                                                "mode":"fallback",
+                                                "reason":format!("RTC negotiation failed: {err}")
+                                            }).to_string());
                                         }
                                     }
                                 }
@@ -422,8 +427,24 @@ async fn run_edge_session(
                             }
                         }
                     }
-                    AxumMessage::Close(_) => break,
+                    AxumMessage::Close(_) => {
+                        signaling_lost_with_direct = channels.read().await.direct_ready();
+                        break;
+                    }
                     _ => {}
+                }
+            }
+        }
+    }
+
+    if signaling_lost_with_direct {
+        loop {
+            tokio::select! {
+                _ = done_rx.recv() => break,
+                _ = sleep(DIRECT_LIVENESS_POLL) => {
+                    if !channels.read().await.direct_ready() {
+                        break;
+                    }
                 }
             }
         }
@@ -476,10 +497,10 @@ async fn send_app_to_browser(
         }
     };
 
-    if let Some(channel) = channel {
-        if channel.send(BytesMut::from(text.as_bytes())).await.is_ok() {
-            return;
-        }
+    if let Some(channel) = channel
+        && channel.send(BytesMut::from(text.as_bytes())).await.is_ok()
+    {
+        return;
     }
 
     if fast {
@@ -522,6 +543,7 @@ async fn negotiate_peer(
         )
         .with_handler(handler)
         .with_udp_addrs(config.udp_bind.clone())
+        .with_data_channel_send_buffer_limit(1024 * 1024)
         .build()
         .await?;
     let pc: Arc<dyn PeerConnection> = Arc::new(pc);
