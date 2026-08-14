@@ -22,7 +22,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, OnceLock,
+        Arc, Mutex as StdMutex, OnceLock,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -52,6 +52,8 @@ const MAX_AVATAR_CHARS: usize = 5000;
 const MAX_WS_MESSAGE_BYTES: usize = 16 * 1024;
 const WS_OUTBOX_CAPACITY: usize = 96;
 const MAX_CONCURRENT_WS: usize = 256;
+const MAX_WS_PER_IP: usize = 32;
+const WS_IDLE_TIMEOUT_MS: i64 = 90_000;
 const MAX_WS_MESSAGES_PER_SEC: u32 = 60;
 const MAX_VOICE_BODY_BYTES: usize = 64 * 1024;
 const VOICE_API_CALLS_PER_10S: u32 = 80;
@@ -528,6 +530,7 @@ struct AppState {
     voice_sessions: Arc<Mutex<HashMap<String, VoiceSessionGrant>>>,
     voice_rates: Arc<Mutex<HashMap<String, VoiceRate>>>,
     active_ws: Arc<AtomicUsize>,
+    ip_connections: Arc<StdMutex<HashMap<String, usize>>>,
     http: Client,
 }
 
@@ -2703,9 +2706,10 @@ async fn ws_handler(
     if !origin_allowed(&headers, state.allowed_origin.as_str()) {
         return (StatusCode::FORBIDDEN, "Forbidden origin").into_response();
     }
+    let client_ip = connecting_ip(&headers);
     ws.max_message_size(MAX_WS_MESSAGE_BYTES)
         .max_frame_size(MAX_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| handle_socket(socket, q, state))
+        .on_upgrade(move |socket| handle_socket(socket, q, state, client_ip))
 }
 struct WsConnGuard(Arc<AtomicUsize>);
 impl Drop for WsConnGuard {
@@ -2714,7 +2718,32 @@ impl Drop for WsConnGuard {
     }
 }
 
-async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState) {
+struct IpConnGuard {
+    ip: String,
+    counts: Arc<StdMutex<HashMap<String, usize>>>,
+}
+impl Drop for IpConnGuard {
+    fn drop(&mut self) {
+        let mut counts = self.counts.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(count) = counts.get_mut(&self.ip) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                counts.remove(&self.ip);
+            }
+        }
+    }
+}
+
+fn connecting_ip(headers: &HeaderMap) -> String {
+    headers
+        .get("cf-connecting-ip")
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| !v.is_empty() && v.len() <= 64)
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, client_ip: String) {
     let active = state.active_ws.fetch_add(1, Ordering::Relaxed) + 1;
     if active > MAX_CONCURRENT_WS {
         state.active_ws.fetch_sub(1, Ordering::Relaxed);
@@ -2728,6 +2757,28 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState) {
         return;
     }
     let _connection_guard = WsConnGuard(state.active_ws.clone());
+    let ip_active = {
+        let mut counts = state
+            .ip_connections
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let count = counts.entry(client_ip.clone()).or_insert(0);
+        *count += 1;
+        *count
+    };
+    let _ip_guard = IpConnGuard {
+        ip: client_ip,
+        counts: state.ip_connections.clone(),
+    };
+    if ip_active > MAX_WS_PER_IP {
+        let _ = socket
+            .send(Message::Text(
+                json!({"t":"error","code":"ip_connection_limit","message":"同一网络连接过多，请稍后重试"}).to_string(),
+            ))
+            .await;
+        let _ = socket.close().await;
+        return;
+    }
     if q.room.len() != 2 || !q.room.chars().all(|c| c.is_ascii_digit()) {
         let _ = socket
             .send(Message::Text(
@@ -2859,6 +2910,9 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState) {
             player_opt = rt.room.players.get(&id).cloned();
         }
         let mut p = player_opt.unwrap();
+        if resumed {
+            p.token = Uuid::new_v4().to_string();
+        }
         let prev = rt.room.host_id.clone();
         connection_id = Uuid::new_v4().to_string();
         p.connected = true;
@@ -2897,8 +2951,29 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState) {
     let room_for_loop = room_arc.clone();
     let mut rate_window = Instant::now();
     let mut rate_count = 0u32;
+    let mut idle_tick = tokio::time::interval(Duration::from_secs(15));
+    idle_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         tokio::select! {
+            _ = idle_tick.tick() => {
+                let stale = {
+                    let rt = room_for_loop.lock().await;
+                    rt.room.players
+                        .get(&player_id)
+                        .filter(|p| p.connection_id == connection_id)
+                        .map(|p| now_ms() - p.last_seen > WS_IDLE_TIMEOUT_MS)
+                        .unwrap_or(true)
+                };
+                if stale {
+                    let _ = ws_tx
+                        .send(Message::Close(Some(CloseFrame {
+                            code: 4001,
+                            reason: "idle timeout".into(),
+                        })))
+                        .await;
+                    break;
+                }
+            }
             out = rx.recv() => {
                 match out {
                     Some(Outgoing::Text(s)) => {
@@ -3287,6 +3362,7 @@ async fn main() {
         voice_sessions: Arc::new(Mutex::new(HashMap::new())),
         voice_rates: Arc::new(Mutex::new(HashMap::new())),
         active_ws: Arc::new(AtomicUsize::new(0)),
+        ip_connections: Arc::new(StdMutex::new(HashMap::new())),
         http: Client::builder()
             .pool_idle_timeout(Duration::from_secs(60))
             .build()

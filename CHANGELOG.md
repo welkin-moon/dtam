@@ -23,6 +23,8 @@
 - WebSocket message/frame 最大 16 KiB；单连接应用层消息最多 60 条/秒。
 - 服务端发送队列由 unbounded 改为有界队列，降低慢客户端造成的内存放大。
 - 总并发 WebSocket 上限 256，保护低内存主机免受连接洪泛。
+- 同一 `CF-Connecting-IP` 最多 32 条并发 WebSocket；服务端对 90 秒无任何活动的连接主动回收。
+- 成功恢复会话后立即轮换 resume token，降低旧 token 泄露后的长期重放价值。
 - WebSocket 与 `/voice` 只接受配置中的正式网页 Origin。
 - `/voice` 请求体限制 64 KiB；Calls API 操作只允许白名单路径和合法 session id。
 - Calls session 绑定到创建它的房间与玩家；`voice_publish` 也验证 session 所有权，阻止跨玩家 session 冒用。

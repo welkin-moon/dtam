@@ -14,7 +14,8 @@
 - Cloudflare Realtime SFU 继续承载 WebRTC 语音媒体；Calls API secret 只保存在服务端本机。
 - 前端实时显示 WebSocket RTT，并计算平滑 RTT/抖动；远端角色使用有界预测 + 更快平滑降低视觉滞后。
 - 击杀、报告、任务、紧急会议、通风管等关键动作会在动作包前强制同步最新位置，减少高延迟下的距离判定错位。
-- WebSocket 单消息/单帧上限 16 KiB、每连接应用消息上限 60/s、发送队列有界、总并发 WebSocket 上限 256。
+- WebSocket 单消息/单帧上限 16 KiB、每连接应用消息上限 60/s、发送队列有界、总并发上限 256、同 IP 并发上限 32；90 秒无活动连接由服务端回收。
+- resume token 在成功恢复会话后立即轮换，降低旧 token 长期重放风险。
 - WebSocket 与语音 API 均校验网页 Origin；语音 session 与房间/玩家绑定，并有本地 API / session 创建限速。
 - 房间快照写入 `D:\server\data\rooms`，采用临时文件 + 备份恢复；v2.8 将磁盘持久化移出房间锁并降为约 5 秒 checkpoint，减少实时消息抖动。
 
