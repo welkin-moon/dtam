@@ -44,6 +44,7 @@ includes(src,"toDataURL('image/webp'",'avatar encoder must use WebP');
 includes(src,'Number(st.guardianAngels||0)','guardian angels must count as special crew');
 includes(src,'voiceErrorMessage','voice errors must be classified');
 includes(src,"const HEARTBEAT_INTERVAL = 3000",'RTT sampling interval must be 3 seconds');
+includes(src,"const CONNECT_TIMEOUT_MS = 20000",'slow Cloudflare routes must get a 20 second websocket handshake budget');
 includes(src,"function renderLatency()",'frontend must display realtime RTT');
 includes(src,"function recordLatency(sample)",'frontend must smooth RTT and jitter');
 includes(src,"function sendAction(payload,syncPosition=true)",'critical actions must force a fresh position checkpoint');
