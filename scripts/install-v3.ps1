@@ -58,6 +58,13 @@ if (-not (Test-Path -LiteralPath $edgeBuilt)) {
     throw "Missing built Edge binary: $edgeBuilt"
 }
 
+foreach ($taskName in @($edgeTaskName, $trayTaskName)) {
+    if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+        Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    }
+}
+Start-Sleep -Milliseconds 250
+
 $existingEdge = Get-Process -Name 'dtam-edge' -ErrorAction SilentlyContinue
 if ($existingEdge) {
     $existingEdge | Stop-Process -Force
