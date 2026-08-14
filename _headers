@@ -15,5 +15,8 @@
 /v3-bootstrap.js
   Cache-Control: public, max-age=3600, immutable
 
+/v3-resilience.js
+  Cache-Control: public, max-age=3600, immutable
+
 /styles.css
   Cache-Control: public, max-age=3600, immutable
