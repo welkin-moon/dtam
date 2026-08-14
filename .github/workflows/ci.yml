@@ -87,9 +87,33 @@ jobs:
           test ! -e gameplay-2.6.css
           test ! -e RELEASE-2.6.md
 
-  windows-v3:
+  windows-edge:
     runs-on: windows-latest
     timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update stable Rust toolchain
+        shell: pwsh
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustc --version
+          cargo --version
+      - name: Build v3 Edge for Windows x64
+        shell: pwsh
+        run: |
+          cargo generate-lockfile --manifest-path edge/Cargo.toml
+          cargo build --release --manifest-path edge/Cargo.toml --locked
+      - name: Upload v3 Edge binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dtam-edge-v3-windows-x64
+          path: edge/target/release/dtam-edge.exe
+          if-no-files-found: error
+
+  windows-tray:
+    runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Update stable Rust toolchain
@@ -114,19 +138,15 @@ jobs:
             $errors | ForEach-Object { Write-Error $_.Message }
             exit 1
           }
-      - name: Build v3 Windows x64 binaries
+      - name: Build v3 Tray for Windows x64
         shell: pwsh
         run: |
-          cargo generate-lockfile --manifest-path edge/Cargo.toml
           cargo generate-lockfile --manifest-path tray/Cargo.toml
           cargo fmt --manifest-path tray/Cargo.toml -- --check
-          cargo build --release --manifest-path edge/Cargo.toml --locked
           cargo build --release --manifest-path tray/Cargo.toml --locked
-      - name: Upload v3 Windows binaries
+      - name: Upload v3 Tray binary
         uses: actions/upload-artifact@v4
         with:
-          name: dtam-v3-windows-x64
-          path: |
-            edge/target/release/dtam-edge.exe
-            tray/target/release/dtam-tray.exe
+          name: dtam-tray-v3-windows-x64
+          path: tray/target/release/dtam-tray.exe
           if-no-files-found: error
