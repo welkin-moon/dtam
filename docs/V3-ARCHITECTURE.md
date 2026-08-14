@@ -9,6 +9,7 @@ v3 is a **new generation based on the v2.8 gameplay core**. It is not the histor
 - Use Cloudflare Tunnel as signaling and automatic fallback instead of the mandatory gameplay path.
 - Let clients on the same LAN use private-address ICE candidates (`10/8`, `172.16/12`, `192.168/16`) without Internet hairpinning.
 - Work with NAT/firewall setups where both sides must send traffic before a UDP pinhole becomes usable.
+- Treat server/client IPv4 and IPv6 addresses as dynamic transport state, never stable node identity.
 - Keep the transport layer ready for a second server/node later.
 - Add a lightweight Windows tray companion without moving the SYSTEM server into the interactive desktop session.
 
@@ -47,10 +48,12 @@ Connection sequence:
 1. Browser opens `wss://edge-d1.lunarlab.uk/edge` through Cloudflare Tunnel.
 2. `dtam-edge` opens a local WebSocket to the authoritative v2.8 core, forwarding the existing room/name/create/token query.
 3. Browser creates two WebRTC DataChannels and sends a non-trickle SDP offer over the signaling WebSocket.
-4. `dtam-edge` creates the answer and gathers host/server-reflexive ICE candidates.
+4. `dtam-edge` creates the answer and gathers current host/server-reflexive ICE candidates.
 5. If ICE succeeds, gameplay switches to DataChannel while the WSS remains available for fallback/signaling.
-6. If ICE fails or later disconnects, traffic continues through the WSS/Tunnel path.
-7. If the v3 Edge endpoint itself is unavailable during initial connection, the browser falls back to the original `wss://rt-d1.lunarlab.uk/ws` v2.8 route.
+6. If ICE fails or later disconnects while WSS is still alive, browser and Edge replace only the WebRTC peer transport and gather fresh candidates; the local Core WebSocket and room/player identity stay unchanged.
+7. If the signaling WSS is lost after direct mode is already healthy, the direct DataChannel continues running instead of being closed just because the backup disappeared.
+8. If both direct and signaling paths are lost (for example during a full network handover), the existing v2.8 reconnect/resume flow restores the player through the normal room token path.
+9. If the v3 Edge endpoint itself is unavailable during initial connection, the browser falls back to the original `wss://rt-d1.lunarlab.uk/ws` v2.8 route.
 
 ### Channels
 
@@ -60,11 +63,34 @@ Connection sequence:
 
 The Rust core remains authoritative on every path. Direct mode does **not** make players authoritative and is not a browser mesh.
 
+## Dynamic IPv4 / IPv6 addressing
+
+Neither the server's private IPv4, public IPv4/NAT mapping, public IPv6, nor IPv6 privacy address is treated as permanent configuration.
+
+- `dtam-edge` binds WebRTC UDP using wildcard/ephemeral addresses (`0.0.0.0:0` and `[::]:0`).
+- Each new WebRTC negotiation gathers the addresses that are valid **at that moment**.
+- STUN-derived server-reflexive candidates are regenerated on negotiation, so a changed public IPv4 NAT mapping is not persisted in config.
+- IPv6 prefix/privacy-address changes are handled the same way: old candidates may die, then a replacement peer gathers the current IPv6 candidates.
+- Browser `online` / network-interface change signals can proactively trigger replacement ICE negotiation while the WSS fallback remains connected.
+- The Edge `node_id`, DNS endpoint, room number, player id and resume token are independent of any particular IP address.
+
+There is intentionally no updater that writes a newly observed IP into `edge.json`, Cloudflare DNS, room files or player state.
+
+A normal address change therefore has three possible outcomes:
+
+1. Existing ICE pair keeps working: nothing happens.
+2. Direct pair dies but WSS/Tunnel survives: replace WebRTC only, keep the same Core session.
+3. Whole client/server uplink changes and WSS also dies: normal reconnect/resume re-establishes the session after connectivity returns.
+
+This also avoids coupling future dual-server routing to changing residential IP addresses: discovery names identify nodes; ICE candidates identify temporary paths.
+
 ## LAN behavior
 
-The Edge WebRTC transport binds UDP on IPv4 and IPv6 wildcard/ephemeral sockets. ICE host candidates can therefore include the server PC's LAN address. A browser on the same LAN can select a private candidate pair and avoid Cloudflare entirely after signaling.
+The Edge WebRTC transport binds UDP on IPv4 and IPv6 wildcard/ephemeral sockets. ICE host candidates can therefore include the server PC's current LAN address. A browser on the same LAN can select a private candidate pair and avoid Cloudflare entirely after signaling.
 
-This is intentionally preferable to making the HTTPS page connect to `ws://192.168.x.x`: that would cause mixed-content/TLS problems and would require certificate handling for private IPs. WebRTC keeps the page HTTPS while the media/data transport can use the best ICE candidate pair.
+If DHCP later changes that LAN address, the old candidate is disposable: replacement negotiation gathers the new address instead of requiring an Edge config edit or service restart.
+
+This is intentionally preferable to making the HTTPS page connect to `ws://192.168.x.x`: that would cause mixed-content/TLS problems and would require certificate handling for private IPs. WebRTC keeps the page HTTPS while the data transport can use the best ICE candidate pair.
 
 The Windows firewall must allow inbound UDP for the **`dtam-edge.exe` program**. There is no need to expose the core TCP port `28727`; it remains loopback-only.
 
@@ -72,7 +98,7 @@ The Windows firewall must allow inbound UDP for the **`dtam-edge.exe` program**.
 
 The design does not require the central node to accept a first unsolicited TCP SYN on a public IPv6 address. ICE connectivity checks are sent by both endpoints, which is compatible with networks that only permit return traffic after the local endpoint has sent outbound traffic and created a pinhole/mapping.
 
-A router's IPv4 “DMZ host” setting is not relied on by v3.
+A router's IPv4 “DMZ host” setting is not relied on by v3. A public IPv4 address or NAT mapping changing later is likewise not a configuration event; the next ICE negotiation discovers the new path.
 
 ## Coordinate authority fix
 
@@ -90,7 +116,9 @@ A later core/client cleanup may move this synchronization into the canonical gam
 
 ## Multi-node preparation
 
-The browser transport already accepts an ordered endpoint list through `window.__DTAM_EDGE_ENDPOINTS__`. Each Edge instance has a `node_id` in configuration. v3.0 uses one node (`shanghai-a`); a future dual-server design can add discovery/routing/room ownership without changing the game UI transport API again.
+The browser transport already accepts an ordered endpoint list through `window.__DTAM_EDGE_ENDPOINTS__`. Each Edge instance has a stable logical `node_id` in configuration. v3.0 uses one node (`shanghai-a`); a future dual-server design can add discovery/routing/room ownership without changing the game UI transport API again.
+
+`node_id` is intentionally **not an IP address**. A node may change LAN IPv4, public IPv4, IPv6 prefix or ISP and remain the same logical node as long as its signaling/discovery name still reaches it.
 
 The authoritative room model is still single-node in v3.0. Do not run two active authoritative cores for the same room until room ownership/replication is explicitly implemented.
 
@@ -119,4 +147,4 @@ D:\server\data\rooms\
 D:\server\logs\
 ```
 
-Secrets remain local. `edge.json` contains network configuration only; the Cloudflare Calls secret stays in the existing locked `server.json`.
+Secrets remain local. `edge.json` contains network policy only; it must not contain discovered public/private addresses. The Cloudflare Calls secret stays in the existing locked `server.json`.
