@@ -1,0 +1,8 @@
+{
+  "listen": "127.0.0.1:28729",
+  "core_ws": "ws://127.0.0.1:28727/ws",
+  "allowed_origins": ["https://d1.lunarlab.uk"],
+  "stun_servers": ["stun:stun.cloudflare.com:3478"],
+  "udp_bind": ["0.0.0.0:0", "[::]:0"],
+  "node_id": "shanghai-a"
+}
