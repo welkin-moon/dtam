@@ -47,19 +47,23 @@ Connection sequence:
 
 1. Browser opens `wss://edge-d1.lunarlab.uk/edge` through Cloudflare Tunnel.
 2. `dtam-edge` opens a local WebSocket to the authoritative v2.8 core, forwarding the existing room/name/create/token query.
-3. Browser creates two WebRTC DataChannels and sends a non-trickle SDP offer over the signaling WebSocket.
-4. For that negotiation, `dtam-edge` enumerates the host's **current** usable IPv4/IPv6 interface addresses, binds ephemeral UDP sockets to those concrete addresses, and gathers host/server-reflexive ICE candidates.
-5. If ICE succeeds, gameplay switches to DataChannel while the WSS remains available for fallback/signaling.
-6. If ICE fails or later disconnects while WSS is still alive, browser and Edge replace only the WebRTC peer transport and gather fresh candidates; the local Core WebSocket and room/player identity stay unchanged.
-7. If the signaling WSS is lost after direct mode is already healthy, the direct DataChannel continues running instead of being closed just because the backup disappeared.
-8. If both direct and signaling paths are lost (for example during a full network handover), the existing v2.8 reconnect/resume flow restores the player through the normal room token path.
-9. If the v3 Edge endpoint itself is unavailable during initial connection, the browser falls back to the original `wss://rt-d1.lunarlab.uk/ws` v2.8 route.
+3. Browser creates two WebRTC DataChannels and sends a non-trickle SDP offer over the signaling WebSocket. The offer carries a browser RTC generation number.
+4. For that negotiation, `dtam-edge` enumerates the host's **current** usable IPv4/IPv6 interface addresses, binds ephemeral UDP sockets to those concrete addresses, and gathers host/server-reflexive ICE candidates in a separate task. WSS game forwarding remains responsive while gathering runs.
+5. Edge echoes the browser generation inside the answer description. The browser ignores a late answer if it belongs to a superseded PeerConnection.
+6. If ICE succeeds, gameplay switches to DataChannel while the WSS remains available for fallback/signaling.
+7. If ICE fails or later disconnects while WSS is still alive, browser and Edge replace only the WebRTC peer transport and gather fresh candidates; the local Core WebSocket and room/player identity stay unchanged.
+8. Both sides fence RTC callbacks/events by generation, so a delayed close/error/data event from an old IPv4/IPv6 path cannot tear down or mutate the replacement path.
+9. If the signaling WSS is lost after direct mode is already healthy, the direct DataChannel continues running instead of being closed just because the backup disappeared.
+10. If both direct and signaling paths are lost (for example during a full network handover), the existing v2.8 reconnect/resume flow restores the player through the normal room token path.
+11. If the v3 Edge endpoint itself is unavailable during initial connection, the browser falls back to the original `wss://rt-d1.lunarlab.uk/ws` v2.8 route.
 
 ### Channels
 
 `dtam-control` is ordered/reliable and carries state-changing messages such as chat, kill/report, tasks, voting and settings.
 
-`dtam-fast` is unordered with `maxRetransmits = 0`; position updates and heartbeat/pong traffic can use it because retransmitting stale position samples is counterproductive.
+`dtam-fast` is **ordered with `maxRetransmits = 0`**. Position updates and heartbeat/pong traffic do not retransmit after loss because stale samples have little value, but samples that do arrive do not reorder within the fast stream. When a fast queue is full, the Edge drops the old fast sample instead of blocking reliable control traffic.
+
+The split into two DataChannels would normally remove v2.8's single-WebSocket ordering guarantee between `flushPosition()` and the following proximity-sensitive action. v3 explicitly restores that invariant: for `emergency`, `vent`, `report`, `kill`, `ability`, `task_begin`, `task_complete`, and `sabotage_fix`, the browser writes the most recent position and the action consecutively to the same reliable `dtam-control` stream. If control cannot safely accept both and WSS is available, both messages are written consecutively to the same WSS fallback instead.
 
 The Rust core remains authoritative on every path. Direct mode does **not** make players authoritative and is not a browser mesh.
 
@@ -117,6 +121,16 @@ That can make A see itself left of B while B simultaneously sees itself left of 
 v3 preserves local prediction during normal movement, but after `game_start` and `lobby_reset` the transport bootstrap takes the server's self position from the next authoritative state and feeds it through the existing `correct` message path. Resume and explicit server corrections continue to use the existing v2.8 behavior.
 
 A later core/client cleanup may move this synchronization into the canonical game protocol, but v3 does not require a large gameplay rewrite to fix it.
+
+## Edge resource and trust boundaries
+
+- `dtam-edge` listens for HTTP/WSS only on loopback in the planned production config; Cloudflared is the public signaling ingress.
+- `/edge` requires the configured production Origin.
+- Signaling WebSocket message and frame limits are both 128 KiB; forwarded game messages are limited to 16 KiB.
+- Edge sessions are capped, internal signal/Core queues are bounded, and each DataChannel has a 1 MiB send-buffer limit.
+- `dtam-fast` uses non-blocking enqueue/drop semantics on the Edge in both directions; reliable control keeps ordered back-pressure semantics.
+- Incoming `CF-Connecting-IP` is parsed as an IP address and forwarded across the trusted loopback hop so the existing v2.8 Core per-IP limiter retains its original meaning.
+- ICE negotiation runs outside the signaling read loop and only one current negotiation task is kept per Edge session; a newer offer aborts/supersedes the previous negotiation.
 
 ## Multi-node preparation
 
