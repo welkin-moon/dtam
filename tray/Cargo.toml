@@ -1,0 +1,22 @@
+[package]
+name = "dtam-tray"
+version = "3.0.0"
+edition = "2024"
+rust-version = "1.97"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[target.'cfg(windows)'.dependencies]
+if-addrs = "0.15"
+serde_json = "1"
+tray-icon = { version = "0.24.2", default-features = false }
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging"
+] }
