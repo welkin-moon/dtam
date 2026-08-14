@@ -1,5 +1,36 @@
 # Changelog
 
+## 3.0 — 开发中
+
+> 新 v3 以 2.8 为游戏逻辑与权威服务端基线，不继承历史旧 v3 实现。
+
+### 直连中心节点网络层
+
+- 新增独立 Rust `dtam-edge` 网关；浏览器先通过 Cloudflare Tunnel 建立信令与兼容通道，再尝试 WebRTC ICE/DataChannel 直达中心节点。
+- v3 不是玩家 mesh P2P：v2.8 Rust Core 继续作为唯一权威状态机，Edge 只替换/复用消息传输路径。
+- 新增 `dtam-control` ordered/reliable 与 `dtam-fast` unordered/no-retransmit 两条 DataChannel；位置与心跳可丢弃旧包，动作/聊天/任务继续可靠传输。
+- 同一 LAN 的客户端可通过 ICE host candidate 使用 `10/8`、`172.16/12`、`192.168/16` 私网地址直连，不需要通过公网或 Cloudflare hairpin。
+- NAT2/状态防火墙场景通过双方 ICE connectivity check 主动打洞，不把公网 IPv6 首包可达或路由器 IPv4 DMZ 作为前提。
+- DataChannel 失败/断开自动回到 Edge WSS/Tunnel；Edge 本身不可用时继续回到原 `rt-d1` v2.8 WebSocket。
+- 浏览器 endpoint 列表与 Edge `node_id` 为后续双服务端路由预留接口；3.0 仍保持单权威房间节点。
+
+### 坐标一致性
+
+- 修复 v2.8 开局服务端重新分配 spawn 后，客户端普通 `state` 路径刻意保留旧 `myPos` 导致各客户端世界坐标不一致的问题。
+- v3 仅在 `game_start` / `lobby_reset` 等权威跃迁后接受服务端 self position，普通移动仍保留本地预测与原服务端 `correct` 校正机制。
+
+### Windows 服务端体验
+
+- 新增 `scripts/dtam-tray.ps1` Windows 通知区 companion，显示 Core/Edge 在线状态、Edge 会话数和 LAN 地址，并可打开游戏、`D:\server` 与日志目录。
+- 托盘与 SYSTEM 后端进程分离，计划以登录用户任务启动，避免 Windows Session 0 隔离导致后台服务无法正常显示通知区图标。
+- CI 新增 Windows x64 `dtam-edge.exe` release build 和托盘 PowerShell 语法检查。
+
+### 部署安全
+
+- v2.8 Core `127.0.0.1:28727` 继续保持 loopback-only；v3 Edge HTTP/WSS 信令端口也计划只监听 loopback，由现有 Cloudflared 转发。
+- 直连仅需要按 `dtam-edge.exe` 程序放行 WebRTC UDP，不公开 Core TCP 游戏端口。
+- Calls/Realtime 语音 Secret 继续只保存在原锁定的 `server.json`，Edge 配置不复制语音 Secret。
+
 ## 2.8 — 2026-08-14
 
 ### 后端迁移与额度
