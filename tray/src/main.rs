@@ -182,7 +182,7 @@ mod windows_app {
         stop.store(true, Ordering::Relaxed);
         let _ = refresh_tx.send(());
         let _ = worker.join();
-        MenuEvent::set_event_handler(None);
+        MenuEvent::set_event_handler::<fn(MenuEvent)>(None);
         Ok(())
     }
 
