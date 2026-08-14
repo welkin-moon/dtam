@@ -98,6 +98,16 @@ impl RtcChannels {
     }
 }
 
+struct RtcNegotiated {
+    peer: Arc<dyn PeerConnection>,
+    description: Value,
+}
+
+struct RtcNegotiationResult {
+    generation: usize,
+    result: Result<RtcNegotiated, String>,
+}
+
 #[derive(Clone)]
 struct EdgePeerHandler {
     channels: Arc<RwLock<RtcChannels>>,
@@ -185,7 +195,11 @@ impl PeerConnectionEventHandler for EdgePeerHandler {
                             continue;
                         }
                         let text = String::from_utf8_lossy(&message.data).into_owned();
-                        if core_tx.send(text).await.is_err() {
+                        if label == "dtam-fast" {
+                            if core_tx.try_send(text).is_err() && core_tx.is_closed() {
+                                break;
+                            }
+                        } else if core_tx.send(text).await.is_err() {
                             break;
                         }
                     }
@@ -335,6 +349,7 @@ async fn edge_upgrade(
     }
 
     ws.max_message_size(MAX_SIGNAL_MESSAGE_BYTES)
+        .max_frame_size(MAX_SIGNAL_MESSAGE_BYTES)
         .on_upgrade(move |socket| edge_session(socket, query, origin, connecting_ip, state))
         .into_response()
 }
@@ -380,6 +395,7 @@ async fn run_edge_session(
     let (signal_tx, mut signal_rx) = mpsc::channel::<String>(SIGNAL_QUEUE);
     let (core_tx, mut core_rx) = mpsc::channel::<String>(CORE_QUEUE);
     let (done_tx, mut done_rx) = mpsc::channel::<()>(2);
+    let (rtc_result_tx, mut rtc_result_rx) = mpsc::channel::<RtcNegotiationResult>(2);
     let channels = Arc::new(RwLock::new(RtcChannels::default()));
     let rtc_generation = Arc::new(AtomicUsize::new(0));
 
@@ -461,11 +477,42 @@ async fn run_edge_session(
     });
 
     let mut peer: Option<Arc<dyn PeerConnection>> = None;
+    let mut rtc_task: Option<tokio::task::JoinHandle<()>> = None;
     let mut signaling_lost_with_direct = false;
 
     loop {
         tokio::select! {
             _ = done_rx.recv() => break,
+            negotiated = rtc_result_rx.recv() => {
+                let Some(negotiated) = negotiated else { break };
+                if negotiated.generation != rtc_generation.load(Ordering::Acquire) {
+                    if let Ok(stale) = negotiated.result {
+                        let _ = stale.peer.close().await;
+                    }
+                    continue;
+                }
+                rtc_task = None;
+                match negotiated.result {
+                    Ok(negotiated) => {
+                        let answer = json!({
+                            "__v3":"answer",
+                            "description":negotiated.description
+                        }).to_string();
+                        if signal_tx.send(answer).await.is_err() {
+                            let _ = negotiated.peer.close().await;
+                            break;
+                        }
+                        peer = Some(negotiated.peer);
+                    }
+                    Err(err) => {
+                        let _ = signal_tx.try_send(json!({
+                            "__v3":"transport",
+                            "mode":"fallback",
+                            "reason":format!("RTC negotiation failed: {err}")
+                        }).to_string());
+                    }
+                }
+            }
             incoming = signal_stream.next() => {
                 let incoming = match incoming {
                     Some(Ok(message)) => message,
@@ -487,28 +534,42 @@ async fn run_edge_session(
                                 }
                                 "offer" => {
                                     let generation = rtc_generation.fetch_add(1, Ordering::AcqRel) + 1;
+                                    if let Some(task) = rtc_task.take() {
+                                        task.abort();
+                                    }
                                     if let Some(old_peer) = peer.take() {
                                         let _ = old_peer.close().await;
                                     }
                                     *channels.write().await = RtcChannels::default();
-                                    match negotiate_peer(
-                                        control.value.get("description").cloned(),
-                                        Arc::clone(&channels),
-                                        core_tx.clone(),
-                                        signal_tx.clone(),
-                                        Arc::clone(&rtc_generation),
-                                        generation,
-                                        &state.config,
-                                    ).await {
-                                        Ok(pc) => peer = Some(pc),
-                                        Err(err) => {
-                                            let _ = signal_tx.try_send(json!({
-                                                "__v3":"transport",
-                                                "mode":"fallback",
-                                                "reason":format!("RTC negotiation failed: {err}")
-                                            }).to_string());
-                                        }
-                                    }
+
+                                    let description = control.value.get("description").cloned();
+                                    let client_generation = control
+                                        .value
+                                        .get("rtcGeneration")
+                                        .and_then(Value::as_u64);
+                                    let task_channels = Arc::clone(&channels);
+                                    let task_core_tx = core_tx.clone();
+                                    let task_signal_tx = signal_tx.clone();
+                                    let task_rtc_generation = Arc::clone(&rtc_generation);
+                                    let task_result_tx = rtc_result_tx.clone();
+                                    let task_config = Arc::clone(&state.config);
+                                    rtc_task = Some(tokio::spawn(async move {
+                                        let result = negotiate_peer(
+                                            description,
+                                            task_channels,
+                                            task_core_tx,
+                                            task_signal_tx,
+                                            Arc::clone(&task_rtc_generation),
+                                            generation,
+                                            client_generation,
+                                            task_config.as_ref(),
+                                        )
+                                        .await
+                                        .map_err(|err| err.to_string());
+                                        let _ = task_result_tx
+                                            .send(RtcNegotiationResult { generation, result })
+                                            .await;
+                                    }));
                                 }
                                 _ => {}
                             }
@@ -548,6 +609,9 @@ async fn run_edge_session(
     }
 
     rtc_generation.fetch_add(1, Ordering::AcqRel);
+    if let Some(task) = rtc_task {
+        task.abort();
+    }
     if let Some(pc) = peer {
         let _ = pc.close().await;
     }
@@ -595,10 +659,14 @@ async fn send_app_to_browser(
         }
     };
 
-    if let Some(channel) = channel
-        && channel.send(BytesMut::from(text.as_bytes())).await.is_ok()
-    {
-        return;
+    if let Some(channel) = channel {
+        if fast {
+            let _ = channel.try_send(BytesMut::from(text.as_bytes())).await;
+            return;
+        }
+        if channel.send(BytesMut::from(text.as_bytes())).await.is_ok() {
+            return;
+        }
     }
 
     if fast {
@@ -615,8 +683,9 @@ async fn negotiate_peer(
     signal_tx: mpsc::Sender<String>,
     rtc_generation: Arc<AtomicUsize>,
     generation: usize,
+    client_generation: Option<u64>,
     config: &Config,
-) -> Result<Arc<dyn PeerConnection>, AnyError> {
+) -> Result<RtcNegotiated, AnyError> {
     let description = description.ok_or("missing RTC description")?;
     let offer: RTCSessionDescription = serde_json::from_value(description)?;
     let (gather_tx, mut gather_rx) = mpsc::channel::<()>(2);
@@ -624,9 +693,9 @@ async fn negotiate_peer(
     let handler = Arc::new(EdgePeerHandler {
         channels,
         core_tx,
-        signal_tx: signal_tx.clone(),
+        signal_tx,
         gather_tx,
-        rtc_generation,
+        rtc_generation: Arc::clone(&rtc_generation),
         generation,
     });
     let ice_servers = if config.stun_servers.is_empty() {
@@ -661,14 +730,27 @@ async fn negotiate_peer(
     let answer = pc.create_answer(None).await?;
     pc.set_local_description(answer).await?;
     let _ = timeout(ICE_GATHER_WAIT, gather_rx.recv()).await;
+
+    if rtc_generation.load(Ordering::Acquire) != generation {
+        let _ = pc.close().await;
+        return Err("superseded RTC negotiation".into());
+    }
+
     let local = pc
         .local_description()
         .await
         .ok_or("missing local RTC description")?;
-    signal_tx
-        .send(json!({"__v3":"answer","description":local}).to_string())
-        .await?;
-    Ok(pc)
+    let mut description = serde_json::to_value(local)?;
+    if let Some(client_generation) = client_generation
+        && let Value::Object(ref mut object) = description
+    {
+        object.insert("v3Generation".into(), json!(client_generation));
+    }
+
+    Ok(RtcNegotiated {
+        peer: pc,
+        description,
+    })
 }
 
 #[tokio::main(flavor = "current_thread")]
