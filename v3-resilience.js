@@ -327,10 +327,5 @@ window.addEventListener('pageshow', event => {
   if (event.persisted) refreshAllRtc('page-restored');
 });
 
-try {
-  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  connection?.addEventListener?.('change', () => refreshAllRtc('network-interface-change'));
-} catch (_) {}
-
 console.log('DTAM v3 transport resilience enabled · generation-fenced dynamic ICE + ordered action sync');
 })();
