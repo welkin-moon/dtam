@@ -1,49 +1,46 @@
 # Among Us · 东滩版
 
-一个面向浏览器的实时多人社交推理小游戏。v2.7 起仓库直接保存可部署源代码，不再通过 Base64 分片和逐版本补丁在构建时重建生产文件。
+一个面向浏览器的实时多人社交推理小游戏。v2.8 的生产架构为 **Cloudflare Pages 静态前端 + Cloudflare Tunnel + 自托管 Rust 实时服务端 + Cloudflare Realtime SFU 语音**。
 
 > 本项目是非官方同人实现，与 Innersloth 无隶属关系；请勿将其误认为官方 Among Us 客户端或服务。
 
 ## 当前版本
 
-**v2.7**
+**v2.8**
 
-- 两位数字房间号（10–99），客户端和实时后端都严格校验。
-- Cloudflare Pages 静态前端 + Cloudflare Workers / Durable Objects 实时房间。
-- Cloudflare Calls WebRTC 语音。
-- 100×100 客户端视图与 150×150 服务端碰撞坐标转换。
-- 任务、紧急会议、投票、通风管、破坏、信息设备和多种职业能力。
-- 幽灵文字频道由 Worker 只投递给死亡玩家；语音订阅同时由目录和 `/voice` 代理在服务端限制。
-- 头像使用 WebP 压缩后持久化，支持断线重连。
+- 两位数字房间号（10–99），浏览器和服务端都严格校验。
+- `d1.lunarlab.uk` 继续由 Cloudflare Pages 托管静态页面。
+- `rt-d1.lunarlab.uk` 通过 Cloudflare Tunnel 进入 Rust/Axum 服务端，不再让 Workers / Durable Objects 承担生产实时消息。
+- Cloudflare Realtime SFU 继续承载 WebRTC 语音媒体；Calls API secret 只保存在服务端本机。
+- 前端实时显示 WebSocket RTT，并计算平滑 RTT/抖动；远端角色使用有界预测 + 更快平滑降低视觉滞后。
+- 击杀、报告、任务、紧急会议、通风管等关键动作会在动作包前强制同步最新位置，减少高延迟下的距离判定错位。
+- WebSocket 单消息/单帧上限 16 KiB、每连接应用消息上限 60/s、发送队列有界、总并发 WebSocket 上限 256。
+- WebSocket 与语音 API 均校验网页 Origin；语音 session 与房间/玩家绑定，并有本地 API / session 创建限速。
+- 房间快照写入 `D:\server\data\rooms`，采用临时文件 + 备份恢复；v2.8 将磁盘持久化移出房间锁并降为约 5 秒 checkpoint，减少实时消息抖动。
 
 ## 仓库结构
 
 ```text
 .
-├── index.html       # 页面骨架
-├── game.js          # 前端游戏逻辑（canonical source）
-├── styles.css       # 唯一生产样式表
-├── worker.js        # 当前生产 Worker / Durable Object 源码
-├── _headers         # Cloudflare Pages 响应头
-├── scripts/test.cjs # 协议、地图、交互和隐私断言
+├── index.html
+├── game.js
+├── styles.css
+├── _headers
+├── server/
+│   ├── Cargo.toml
+│   ├── Cargo.lock
+│   ├── config.example.json
+│   └── src/main.rs       # v2.8 生产 Rust 后端
+├── worker.js             # v2.7 legacy rollback，不在生产请求路径
+├── scripts/test.cjs
 ├── CHANGELOG.md
 ├── LICENSE
 └── .github/workflows/ci.yml
 ```
 
-旧版 `src/game.b64.*`、`src/game-2.6.br.*`、`build/patch-game-*` 和多层 `gameplay-*.css` 已在 v2.7 移除。生产构建不再依赖历史补丁链。
+## 本地检查
 
-## 本地运行
-
-前端没有打包器依赖，可直接用静态 HTTP 服务：
-
-```bash
-python3 -m http.server 8080
-```
-
-然后访问 `http://localhost:8080`。多数浏览器把 `localhost` 视为安全上下文；部署到其他主机时，麦克风需要 HTTPS。
-
-执行静态和地图协议测试：
+前端：
 
 ```bash
 node --check game.js
@@ -51,31 +48,48 @@ cp worker.js /tmp/dtam-worker.mjs && node --check /tmp/dtam-worker.mjs
 node scripts/test.cjs
 ```
 
+Rust 服务端：
+
+```bash
+cargo fmt --manifest-path server/Cargo.toml -- --check
+cargo clippy --manifest-path server/Cargo.toml --all-targets --locked -- -D warnings
+cargo test --manifest-path server/Cargo.toml --locked
+cargo build --manifest-path server/Cargo.toml --release --locked
+```
+
 ## 部署
 
 ### Cloudflare Pages
 
-Pages 根目录就是仓库根目录，不需要生成生产 JS。推荐构建命令：
+Pages 根目录仍为仓库根目录，输出目录 `.`。静态资源 URL 使用版本 query 做 cache busting，因此 `game.js` / `styles.css` 可安全使用 immutable cache；HTML 保持 `no-cache`。
 
-```bash
-node --check game.js && cp worker.js /tmp/dtam-worker.mjs && node --check /tmp/dtam-worker.mjs && node scripts/test.cjs
+### Rust 实时服务
+
+复制 `server/config.example.json` 为本机配置文件并填写 Calls App ID/Secret。生产机当前默认读取：
+
+```text
+D:\server\config\server.json
 ```
 
-输出目录为 `.`。
+生产监听：
 
-### Worker
+```text
+127.0.0.1:28727
+```
 
-`worker.js` 使用模块语法，并导出 `GameRoom` Durable Object。生产环境至少需要以下绑定：
+再由 Cloudflare Tunnel 把 `rt-d1.lunarlab.uk` 转发到该地址。服务端只监听 loopback，不需要在路由器/Windows 防火墙公开游戏端口。
 
-- `ROOMS`：Durable Object namespace，class 为 `GameRoom`。
-- `CALLS_APP_ID`：Cloudflare Calls 应用 ID。
-- `CALLS_APP_SECRET`：Cloudflare Calls 密钥，必须作为 secret 配置，**不要提交到仓库**。
+`calls_secret` **禁止提交到仓库**。
 
-前端当前通过 `rt-d1.lunarlab.uk` 连接实时服务和语音代理；自托管时可在 `game.js` 顶部修改 `REALTIME_ORIGIN` 与 `VOICE_API`。
+## Cloudflare 使用边界
+
+纯 Pages 静态资源请求属于免费且不限请求量的静态资产流量；Pages Functions 才会计入 Workers 配额。v2.8 的实时游戏 WebSocket 已不经过 Worker/DO，所以之前 Durable Objects Free 的 100,000 requests/day 不再约束游戏实时同步。
+
+仍需关注 Cloudflare Realtime SFU 的独立用量。Cloudflare 当前为 Realtime SFU 提供每账户每月前 1,000 GB 下行免费额度，超过后按 Realtime 定价计算。Tunnel 是当前自托管入口，不应把它理解成 Durable Objects 那种按 WebSocket 消息计数的额度。
 
 ## 隐私与信任边界
 
-v2.7 不再只依赖前端隐藏幽灵信息。普通游戏中的死亡玩家文字只在 Durable Object 内发往死亡连接；语音目录按接收者过滤，Calls 的远端音轨订阅还会在 Worker 代理层重新校验。客户端仍保留防御性过滤，用来处理旧消息或异常状态。
+普通游戏中的死亡玩家文字只投递给死亡连接；语音目录按接收者过滤，Calls 远端音轨订阅还会在 Rust 代理重新校验。v2.8 进一步把 Calls session 绑定到创建它的房间玩家，阻止合法房间 token 操作其他 session。
 
 ## License
 

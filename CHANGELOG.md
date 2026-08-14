@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.8 — 2026-08-14
+
+### 后端迁移与额度
+
+- 生产实时服务从 Cloudflare Worker + Durable Objects 迁移到 Windows 主机上的 Rust/Axum 服务，通过 `rt-d1.lunarlab.uk` → Cloudflare Tunnel → `127.0.0.1:28727` 提供服务。
+- Pages 静态前端保持不变；旧 `worker.js` 仅作为 v2.7 legacy rollback 保留。
+- Rust 服务端源码、Cargo lockfile 和无 secret 的配置模板进入仓库和 CI。
+- 房间状态持久化到 `D:\server\data\rooms`；checkpoint 从锁内同步写盘改为约 5 秒一次的锁外阻塞任务，降低实时线程抖动。
+
+### 延迟与手感
+
+- HUD 新增实时 RTT 显示，并对 RTT 与抖动做指数平滑。
+- heartbeat/RTT 采样调整为 3 秒；页面从后台恢复时立即重新采样。
+- 远端移动从“只追最后坐标”升级为有界速度预测 + 平滑追踪，预测窗口最多 80 ms，避免过度外推。
+- 击杀、报告、任务、修复、紧急会议、能力和通风管等关键动作会先强制发送最新坐标再发送动作，减少服务端距离判定使用旧坐标的问题。
+- 前端对实时域名增加 `preconnect` / `dns-prefetch`，版本化 JS/CSS 改用 immutable cache。
+
+### 安全与稳定性
+
+- WebSocket message/frame 最大 16 KiB；单连接应用层消息最多 60 条/秒。
+- 服务端发送队列由 unbounded 改为有界队列，降低慢客户端造成的内存放大。
+- 总并发 WebSocket 上限 256，保护低内存主机免受连接洪泛。
+- WebSocket 与 `/voice` 只接受配置中的正式网页 Origin。
+- `/voice` 请求体限制 64 KiB；Calls API 操作只允许白名单路径和合法 session id。
+- Calls session 绑定到创建它的房间与玩家；`voice_publish` 也验证 session 所有权，阻止跨玩家 session 冒用。
+- 每玩家语音 API 与 session 创建均有本地限速；上游错误不再把内部错误细节原样返回浏览器。
+- 快照写盘改用 `.tmp` + `.bak` 恢复策略，避免异常中断留下空/半写 JSON。
+- Pages 增加 CSP、`X-Frame-Options: DENY`，并继续限制摄像头/定位权限。
+
 ## 2.7 — 2026-08-13
 
 ### 发布与结构

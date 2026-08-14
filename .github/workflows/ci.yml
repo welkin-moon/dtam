@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, v2.7-cleanup]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -23,6 +23,14 @@ jobs:
           cp worker.js /tmp/dtam-worker.mjs
           node --check /tmp/dtam-worker.mjs
           node scripts/test.cjs
+      - name: Verify Rust realtime server
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup component add clippy rustfmt
+          cargo fmt --manifest-path server/Cargo.toml -- --check
+          cargo clippy --manifest-path server/Cargo.toml --all-targets --locked -- -D warnings
+          cargo test --manifest-path server/Cargo.toml --locked
       - name: Reject legacy build layers
         shell: bash
         run: |

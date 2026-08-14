@@ -1,0 +1,7 @@
+{
+  "bind": "127.0.0.1:28727",
+  "data_dir": "D:\\server\\data",
+  "calls_app_id": "",
+  "calls_secret": "",
+  "allowed_origin": "https://d1.lunarlab.uk"
+}

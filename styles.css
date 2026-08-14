@@ -93,7 +93,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--text); outl
 }
 .hud-left, .hud-right { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; pointer-events: auto; }
 .hud-right { justify-content: flex-end; }
-#hud button, .room-tag, .my-name, #connectionStatus {
+#hud button, .room-tag, .my-name, #connectionStatus, #latencyStatus {
   min-height: 36px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in srgb, var(--surface) 92%, transparent); color: var(--text); padding: 0 10px; backdrop-filter: blur(8px);
 }
 #hud button { cursor: pointer; }
@@ -102,6 +102,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--text); outl
 #playerCountBtn strong { margin-right: 4px; }
 .btn-leave { color: var(--danger) !important; }
 #connectionStatus { color: var(--muted); font-size: 12px; white-space: nowrap; }
+#latencyStatus { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 48px; justify-content: center; }
+#latencyStatus[data-quality="good"] { color: var(--success); }
+#latencyStatus[data-quality="fair"] { color: var(--warning); }
+#latencyStatus[data-quality="poor"], #latencyStatus[data-quality="bad"] { color: var(--danger); }
 #connectionStatus::before { content: ''; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: currentColor; }
 #connectionStatus[data-state="online"] { color: var(--success); }
 #connectionStatus[data-state="connecting"] { color: var(--warning); }
@@ -165,7 +169,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--text); outl
   .menu-content { margin-top: max(48px, env(safe-area-inset-top)); }
   .card { border-radius: 12px; padding: 15px; }
   #hud { top: max(7px, env(safe-area-inset-top)); left: max(7px, env(safe-area-inset-left)); right: max(7px, env(safe-area-inset-right)); }
-  #hud button, .room-tag, .my-name, #connectionStatus { min-height: 34px; padding-inline: 8px; font-size: 12px; }
+  #hud button, .room-tag, .my-name, #connectionStatus, #latencyStatus { min-height: 34px; padding-inline: 8px; font-size: 12px; }
   .my-name { display: none !important; }
   #chatStream { top: 58px; left: 10px; width: calc(100vw - 20px); }
   #chatPanel, #playerPanel { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); top: auto; bottom: max(8px, env(safe-area-inset-bottom)); width: auto; max-height: min(62vh, 520px); border-radius: 12px; }
@@ -174,7 +178,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--text); outl
   #gameToast { bottom: max(122px, calc(env(safe-area-inset-bottom) + 112px)); }
 }
 @media (max-height: 500px) {
-  #hud button, .room-tag, .my-name, #connectionStatus { min-height: 31px; }
+  #hud button, .room-tag, .my-name, #connectionStatus, #latencyStatus { min-height: 31px; }
   #joystick { width: 96px; }
   #interactBtn { width: 82px; }
   #chatStream { top: 48px; }
@@ -342,3 +346,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--text); outl
   .admin-cell{min-width:0;font-size:9px}.admin-cell strong{font-size:15px}.admin-cell small{font-size:7px}
   .room-id{min-width:58px!important;padding-inline:5px!important;font-size:10px!important}
 }
+
+@media(max-width:720px){#latencyStatus{min-width:44px!important;padding-inline:6px!important;font-size:11px!important}}
+@media(max-width:430px){#latencyStatus{min-width:40px!important;padding-inline:4px!important;font-size:10px!important}}

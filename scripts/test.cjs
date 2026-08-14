@@ -7,13 +7,13 @@ const css=fs.readFileSync('styles.css','utf8');
 const headers=fs.readFileSync('_headers','utf8');
 const worker=fs.readFileSync('worker.js','utf8');
 
-function assert(condition,message){if(!condition)throw new Error(`[2.7 test] ${message}`);}
+function assert(condition,message){if(!condition)throw new Error(`[2.8 test] ${message}`);}
 function includes(text,needle,message){assert(text.includes(needle),message||`missing ${needle}`);}
 function excludes(text,needle,message){assert(!text.includes(needle),message||`unexpected ${needle}`);}
 function approx(a,b,epsilon=1e-8){return Math.abs(a-b)<=epsilon;}
 
 new Function(src);
-includes(src,"const CLIENT_VERSION = '2.7'",'client version must be 2.7');
+includes(src,"const CLIENT_VERSION = '2.8'",'client version must be 2.8');
 includes(src,"const ROOM_CODE_RE = /^\\d{2}$/",'client room codes must be exactly two digits');
 includes(src,"Array.from({length:90},(_,i)=>String(i+10))",'room candidate pool must be 10-99');
 includes(src,"room=String(room).replace(/\\D/g,'').slice(0,2)",'room normalization must stop at two digits');
@@ -43,10 +43,15 @@ includes(src,'const MAX_AVATAR_CHARS = 4800','avatar must fit Worker limit');
 includes(src,"toDataURL('image/webp'",'avatar encoder must use WebP');
 includes(src,'Number(st.guardianAngels||0)','guardian angels must count as special crew');
 includes(src,'voiceErrorMessage','voice errors must be classified');
+includes(src,"const HEARTBEAT_INTERVAL = 3000",'RTT sampling interval must be 3 seconds');
+includes(src,"function renderLatency()",'frontend must display realtime RTT');
+includes(src,"function recordLatency(sample)",'frontend must smooth RTT and jitter');
+includes(src,"function sendAction(payload,syncPosition=true)",'critical actions must force a fresh position checkpoint');
+includes(src,"const REMOTE_PREDICTION_MAX_MS = 80",'remote movement prediction must be bounded');
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
-includes(html,'/styles.css?v=2.7','only canonical v2.7 stylesheet must be loaded');
-includes(html,'/game.js?v=2.7','v2.7 JavaScript must be loaded');
+includes(html,'/styles.css?v=2.8','only canonical v2.8 stylesheet must be loaded');
+includes(html,'/game.js?v=2.8','v2.8 JavaScript must be loaded');
 includes(html,'maxlength="2"','room input must be two digits');
 includes(html,'pattern="[0-9]{2}"','room input must validate two digits');
 excludes(html,'gameplay-2.','legacy versioned CSS must not be loaded');
@@ -54,7 +59,7 @@ excludes(css,'.voice-sink{display:none!important}','remote audio must never be r
 includes(css,'#actionStack #killBtn{order:5}','kill button position must be stable');
 includes(css,'#actionStack #reportBtn{order:6}','report must not replace kill under the finger');
 
-includes(worker,"version:'2.7'",'Worker health version must be 2.7');
+includes(worker,"version:'2.7'",'legacy rollback Worker must remain v2.7-compatible');
 includes(worker,"if(!/^\\d{2}$/.test(room))",'Worker must enforce strict two-digit room codes');
 excludes(worker,"(?:\\d{2}|\\d{6})",'Worker must not retain six-digit room compatibility');
 includes(worker,'voiceDirectory(viewer=null)','voice directory must be recipient-aware');
@@ -123,7 +128,7 @@ for(const item of [...m.NETWORK_OBJECT_DEFS,...m.NETWORK_VENT_DEFS])assert(netwo
 assert(clientFlood.queue.length>m.MAP_SIZE*m.MAP_SIZE*.5,'client-visible map is unexpectedly fragmented');
 assert(networkFlood.queue.length>m.NETWORK_MAP_SIZE*m.NETWORK_MAP_SIZE*.55,'Worker map is unexpectedly fragmented');
 
-console.log('[dtam] gameplay 2.7 tests passed',{
+console.log('[dtam] gameplay 2.8 tests passed',{
   clientWalkableReachable:clientFlood.queue.length,
   networkWalkableReachable:networkFlood.queue.length,
   objects:m.OBJECT_DEFS.length,
