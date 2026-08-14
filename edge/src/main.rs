@@ -278,6 +278,9 @@ fn current_udp_bind_addrs(fallback: Vec<String>) -> Vec<String> {
 
     if let Ok(interfaces) = if_addrs::get_if_addrs() {
         for interface in interfaces {
+            if !interface.is_oper_up() {
+                continue;
+            }
             let ip = interface.ip();
             if !useful_ice_ip(ip) || !unique.insert(ip) {
                 continue;
@@ -293,7 +296,11 @@ fn current_udp_bind_addrs(fallback: Vec<String>) -> Vec<String> {
         .map(|(_, address)| address)
         .collect();
 
-    if selected.is_empty() { fallback } else { selected }
+    if selected.is_empty() {
+        fallback
+    } else {
+        selected
+    }
 }
 
 async fn health(State(state): State<AppState>) -> Json<Value> {
@@ -363,10 +370,9 @@ async fn run_edge_session(
     request
         .headers_mut()
         .insert("Origin", HeaderValue::from_str(&origin)?);
-    request.headers_mut().insert(
-        "cf-connecting-ip",
-        HeaderValue::from_str(&connecting_ip)?,
-    );
+    request
+        .headers_mut()
+        .insert("cf-connecting-ip", HeaderValue::from_str(&connecting_ip)?);
     let (core_socket, _) = connect_async(request).await?;
 
     let (mut signal_sink, mut signal_stream) = signal_socket.split();
@@ -632,8 +638,8 @@ async fn negotiate_peer(
         }]
     };
     let fallback_udp_bind = config.udp_bind.clone();
-    let udp_addrs = tokio::task::spawn_blocking(move || current_udp_bind_addrs(fallback_udp_bind))
-        .await?;
+    let udp_addrs =
+        tokio::task::spawn_blocking(move || current_udp_bind_addrs(fallback_udp_bind)).await?;
     eprintln!(
         "[dtam-edge] ICE generation {generation} bind addresses: {}",
         udp_addrs.join(", ")
