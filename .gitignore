@@ -1,4 +1,7 @@
 /server/target/
 /server/config.json
 /server/server.json
+/edge/target/
+/edge/config.json
+/tray/target/
 *.pdb
