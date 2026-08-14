@@ -8,11 +8,14 @@
 
 - 新增独立 Rust `dtam-edge` 网关；浏览器先通过 Cloudflare Tunnel 建立信令与兼容通道，再尝试 WebRTC ICE/DataChannel 直达中心节点。
 - v3 不是玩家 mesh P2P：v2.8 Rust Core 继续作为唯一权威状态机，Edge 只替换/复用消息传输路径。
-- 新增 `dtam-control` ordered/reliable 与 `dtam-fast` unordered/no-retransmit 两条 DataChannel；位置与心跳可丢弃旧包，动作/聊天/任务继续可靠传输。
+- 新增 `dtam-control` ordered/reliable 与 `dtam-fast` **ordered/no-retransmit** 两条 DataChannel；fast 不重传旧位置/心跳，同时不允许同一 fast stream 自己乱序。
+- 保留 v2.8 `flushPosition()` 的语义：击杀、报告、任务、能力、紧急会议、通风管、修复等关键动作在 direct 模式下把最近位置和动作连续发送到同一 reliable control stream；必要时两者一起走 WSS fallback，避免跨 DataChannel 乱序破坏服务端距离判定。
 - 同一 LAN 的客户端可通过真实 ICE host candidate 使用当前 `10/8`、`172.16/12`、`192.168/16` 私网地址直连，不需要通过公网或 Cloudflare hairpin。
 - 服务端每次 RTC 协商重新枚举当前 operationally-Up 的 IPv4/IPv6 网卡地址并绑定临时 UDP 端口；公网 IPv4 NAT 映射通过 STUN 重新发现，不把任何动态地址写进节点身份或持久配置。
 - IPv4 DHCP、NAT 映射变化、IPv6 privacy address/prefix 变化导致旧直连失效时，只要 WSS/Tunnel 仍在，就替换 WebRTC PeerConnection 而保留同一 Core 房间/玩家会话。
-- RTC generation fencing 阻止旧 PeerConnection/DataChannel 的晚到事件污染新连接。
+- 浏览器与 Edge 都使用 RTC generation fencing；旧 PeerConnection/DataChannel 的晚到 close/error/answer 不会污染已经启动的新路径。
+- Edge 的 STUN/ICE gather 在独立任务中执行，协商期间 WSS 浏览器→Core fallback 仍持续处理游戏消息，不会因为最多数秒的 candidate gather 卡住输入。
+- `dtam-fast` 在浏览器→Core 和 Core→浏览器方向都采用拥塞即丢弃过期采样的策略，不让 fast 队列反压可靠控制流。
 - Tunnel 在直连成功后若临时断开，不会主动关闭仍健康的 DataChannel/Core 会话；两条路径都失效时才进入原 v2.8 resume 流程。
 - NAT2/状态防火墙场景通过双方 ICE connectivity check 主动打洞，不把公网 IPv6 首包可达或路由器 IPv4 DMZ 作为前提。
 - Edge 本身不可用时继续回到原 `rt-d1` v2.8 WebSocket。
@@ -36,7 +39,7 @@
 
 - v2.8 Core `127.0.0.1:28727` 继续保持 loopback-only；v3 Edge HTTP/WSS 信令端口也只计划监听 loopback，由现有 Cloudflared 转发。
 - 直连仅需要按 `dtam-edge.exe` 程序放行 WebRTC UDP，不公开 Core TCP 游戏端口；防火墙规则不绑定动态 IP。
-- Edge 继续校验正式网页 Origin、限制 signal/app 消息大小、总会话数并使用有界队列；WebRTC 每 DataChannel send buffer 限制为 1 MiB。
+- Edge 继续校验正式网页 Origin；signaling WebSocket 同时限制 message/frame 为 128 KiB，游戏应用消息上限 16 KiB；总会话数、内部队列与 WebRTC send buffer 均有界。
 - Edge 将经 Cloudflare 验证/传入的 `CF-Connecting-IP` 转给 loopback Core，保留 v2.8 原有的每 IP 并发限制语义。
 - Calls/Realtime 语音 Secret 继续只保存在原锁定的 `server.json`，Edge 配置不复制语音 Secret。
 - Core、Edge、Tray 在 CI 中分别接受 Rust/格式/安全检查；v3 使用当前 stable Rust（开发时 GitHub runner 为 Rust 1.97.1）。
