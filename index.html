@@ -17,7 +17,8 @@
             }
         })();
     </script>
-    <link rel="preconnect" href="https://rt-d1.lunarlab.uk" crossorigin />
+    <link rel="preconnect" href="https://edge-d1.lunarlab.uk" crossorigin />
+    <link rel="dns-prefetch" href="//edge-d1.lunarlab.uk" />
     <link rel="dns-prefetch" href="//rt-d1.lunarlab.uk" />
     <link rel="stylesheet" href="/styles.css?v=2.8.1" />
 </head>
@@ -25,7 +26,7 @@
     <div id="menu">
         <button type="button" class="theme-toggle" id="menuThemeBtn" aria-label="切换主题">深色</button>
         <main class="menu-content">
-            <header class="menu-brand"><h1 class="logo">Among Us <span>东滩版</span></h1><p class="sub">Cloudflare 实时联机</p></header>
+            <header class="menu-brand"><h1 class="logo">Among Us <span>东滩版</span></h1><p class="sub">v3 节点直连 · Tunnel 自动备用</p></header>
             <div class="card">
                 <div class="field"><label for="playerNameInput">昵称</label><input type="text" id="playerNameInput" placeholder="输入昵称" maxlength="12" value="玩家" autocomplete="nickname" /></div>
                 <div class="profile-picker">
@@ -57,6 +58,7 @@
         </div>
         <div id="gameToast" aria-live="polite">等待玩家加入…</div>
     </div>
+    <script src="/v3-bootstrap.js?v=3.0.0" defer></script>
     <script src="/game.js?v=2.8.1" defer></script>
 </body>
 </html>
