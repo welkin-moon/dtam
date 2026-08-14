@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, v3-2.8-base]
   pull_request:
     branches: [main]
 
@@ -13,7 +13,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Verify canonical sources
@@ -21,22 +21,44 @@ jobs:
         run: |
           set -euo pipefail
           node --check game.js
+          node --check v3-bootstrap.js
           cp worker.js /tmp/dtam-worker.mjs
           node --check /tmp/dtam-worker.mjs
           node scripts/test.cjs
+      - name: Update stable Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup component add clippy rustfmt
+          rustc --version
+          cargo --version
       - name: Verify Rust realtime server
         shell: bash
         run: |
           set -euo pipefail
-          rustup component add clippy rustfmt
           cargo fmt --manifest-path server/Cargo.toml -- --check
           cargo clippy --manifest-path server/Cargo.toml --all-targets --locked -- -D warnings
           cargo test --manifest-path server/Cargo.toml --locked
-      - name: RustSec dependency audit
+      - name: Verify Rust v3 edge
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path edge/Cargo.toml
+          cargo fmt --manifest-path edge/Cargo.toml -- --check
+          cargo clippy --manifest-path edge/Cargo.toml --all-targets --locked -- -D warnings
+          cargo test --manifest-path edge/Cargo.toml --locked
+      - name: RustSec audit core
         uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: server
+      - name: RustSec audit v3 edge
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: edge
       - name: Reject legacy build layers
         shell: bash
         run: |
@@ -48,3 +70,41 @@ jobs:
           test ! -e gameplay-2.5.css
           test ! -e gameplay-2.6.css
           test ! -e RELEASE-2.6.md
+
+  windows-edge:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update stable Rust toolchain
+        shell: pwsh
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustc --version
+          cargo --version
+      - name: Parse tray script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'scripts/dtam-tray.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+      - name: Build v3 edge for Windows x64
+        shell: pwsh
+        run: |
+          cargo generate-lockfile --manifest-path edge/Cargo.toml
+          cargo build --release --manifest-path edge/Cargo.toml --locked
+      - name: Upload v3 edge binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dtam-edge-v3-windows-x64
+          path: edge/target/release/dtam-edge.exe
+          if-no-files-found: error
