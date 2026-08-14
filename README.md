@@ -1,39 +1,82 @@
 # Among Us · 东滩版
 
-一个面向浏览器的实时多人社交推理小游戏。v2.8 的生产架构为 **Cloudflare Pages 静态前端 + Cloudflare Tunnel + 自托管 Rust 实时服务端 + Cloudflare Realtime SFU 语音**。
+一个面向浏览器的实时多人社交推理小游戏。
 
 > 本项目是非官方同人实现，与 Innersloth 无隶属关系；请勿将其误认为官方 Among Us 客户端或服务。
 
-## 当前版本
+## 当前开发版本
 
-**v2.8**
+**v3（基于 v2.8 的新一代；不是历史上的旧 v3）**
+
+v3 保留 v2.8 已加固的 Rust 权威游戏核心，在它前面新增一个轻量 Rust Edge 网络层：浏览器先通过 Cloudflare Tunnel 完成加入房间与 WebRTC 信令，ICE/DataChannel 建链成功后，实时游戏流量优先直接到上海中心节点；直连失败或中断时自动回落到 Tunnel。
+
+```text
+Cloudflare Pages
+      |
+      v
+   Browser
+      |\
+      | \ WebRTC DataChannel direct
+      |  +----------------------------+
+      |                               v
+      +-- WSS / Cloudflare Tunnel --> dtam-edge v3
+                                      |
+                                      | loopback WebSocket
+                                      v
+                                 dtam-server v2.8
+                                 authoritative core
+```
+
+- **不是玩家之间 mesh P2P。** Rust 中心节点仍然是唯一权威状态机。
+- `dtam-control` 使用 ordered/reliable DataChannel 传输动作、聊天、任务、投票等可靠消息。
+- `dtam-fast` 使用 unordered + `maxRetransmits=0` 传输位置/心跳等过期即无价值的数据。
+- 同一 LAN 内的浏览器可以通过 ICE host candidate 直接使用 `10.x` / `172.16-31.x` / `192.168.x` 地址，不需要公网回环。
+- NAT/防火墙环境下由 ICE 双向 connectivity checks 尝试建立可用 UDP 路径，不依赖路由器 IPv4 “DMZ 主机”作为核心机制。
+- v3 Edge 不可用时，浏览器还会最终回落到原来的 `wss://rt-d1.lunarlab.uk/ws` v2.8 路径。
+- 浏览器 endpoint 列表与 Edge `node_id` 已为后续双服务端路由预留接口；v3.0 本身仍是单权威节点。
+- Cloudflare Realtime/Calls SFU 继续承载现有语音媒体；v3 DataChannel 只负责游戏实时消息。
+- 修复 v2.8 开局重新分配 spawn 后客户端继续保留旧 `myPos` 所造成的多客户端坐标世界不一致；普通移动仍保留本地预测。
+- Windows 新增独立托盘 companion，显示 Core/Edge 状态、Edge 会话数和 LAN 地址；托盘运行于登录用户会话，后台 Core/Edge 仍可由 SYSTEM 自启。
+
+完整设计见 [`docs/V3-ARCHITECTURE.md`](docs/V3-ARCHITECTURE.md)。
+
+## v2.8 生产基线
+
+在 v3 完成主机部署验证前，现网仍是 **Cloudflare Pages 静态前端 + Cloudflare Tunnel + 自托管 Rust v2.8 实时服务端 + Cloudflare Realtime SFU 语音**。v3 分支不会删除这条回退路径。
+
+v2.8 已有的关键加固继续作为 v3 游戏核心基线：
 
 - 两位数字房间号（10–99），浏览器和服务端都严格校验。
-- `d1.lunarlab.uk` 继续由 Cloudflare Pages 托管静态页面。
-- `rt-d1.lunarlab.uk` 通过 Cloudflare Tunnel 进入 Rust/Axum 服务端，不再让 Workers / Durable Objects 承担生产实时消息。
-- Cloudflare Realtime SFU 继续承载 WebRTC 语音媒体；Calls API secret 只保存在服务端本机。
-- 前端实时显示 WebSocket RTT，并计算平滑 RTT/抖动；远端角色使用有界预测 + 更快平滑降低视觉滞后。
-- 击杀、报告、任务、紧急会议、通风管等关键动作会在动作包前强制同步最新位置，减少高延迟下的距离判定错位。
-- WebSocket 单消息/单帧上限 16 KiB、每连接应用消息上限 60/s、发送队列有界、总并发上限 256、同 IP 并发上限 32；90 秒无活动连接由服务端回收。
-- resume token 在成功恢复会话后立即轮换，降低旧 token 长期重放风险。
-- WebSocket 与语音 API 均校验网页 Origin；语音 session 与房间/玩家绑定，并有本地 API / session 创建限速。
-- 房间快照写入 `D:\server\data\rooms`，采用临时文件 + 备份恢复；v2.8 将磁盘持久化移出房间锁并降为约 5 秒 checkpoint，减少实时消息抖动。
+- `d1.lunarlab.uk` 由 Cloudflare Pages 托管静态页面。
+- `rt-d1.lunarlab.uk` 通过 Cloudflare Tunnel 进入 Rust/Axum 核心，不再让 Workers / Durable Objects 承担生产实时消息。
+- WebSocket 单消息/单帧上限 16 KiB、每连接应用消息上限 60/s、发送队列有界、总并发上限 256、同 IP 并发上限 32；90 秒无活动连接由核心回收。
+- resume token 在成功恢复会话后立即轮换。
+- WebSocket 与语音 API 校验网页 Origin；Calls session 与房间/玩家绑定。
+- 房间快照存放在 `D:\server\data\rooms`，采用临时文件 + 备份恢复并把持久化 I/O 移出实时房间锁。
 
 ## 仓库结构
 
 ```text
 .
 ├── index.html
-├── game.js
+├── game.js                    # v2.8 gameplay client / protocol
+├── v3-bootstrap.js            # v3 hybrid WebSocket/DataChannel transport facade
 ├── styles.css
 ├── _headers
 ├── server/
 │   ├── Cargo.toml
 │   ├── Cargo.lock
 │   ├── config.example.json
-│   └── src/main.rs       # v2.8 生产 Rust 后端
-├── worker.js             # v2.7 legacy rollback，不在生产请求路径
-├── scripts/test.cjs
+│   └── src/main.rs            # v2.8 authoritative Rust core
+├── edge/
+│   ├── Cargo.toml
+│   ├── config.example.json
+│   └── src/main.rs            # v3 WebRTC Edge / Tunnel gateway
+├── scripts/
+│   ├── test.cjs
+│   └── dtam-tray.ps1          # Windows interactive tray companion
+├── docs/V3-ARCHITECTURE.md
+├── worker.js                   # v2.7 legacy rollback，不在生产请求路径
 ├── CHANGELOG.md
 ├── LICENSE
 └── .github/workflows/ci.yml
@@ -45,11 +88,12 @@
 
 ```bash
 node --check game.js
+node --check v3-bootstrap.js
 cp worker.js /tmp/dtam-worker.mjs && node --check /tmp/dtam-worker.mjs
 node scripts/test.cjs
 ```
 
-Rust 服务端：
+v2.8 权威 Core：
 
 ```bash
 cargo fmt --manifest-path server/Cargo.toml -- --check
@@ -58,39 +102,52 @@ cargo test --manifest-path server/Cargo.toml --locked
 cargo build --manifest-path server/Cargo.toml --release --locked
 ```
 
-## 部署
+v3 Edge：
 
-### Cloudflare Pages
+```bash
+cargo generate-lockfile --manifest-path edge/Cargo.toml
+cargo fmt --manifest-path edge/Cargo.toml -- --check
+cargo clippy --manifest-path edge/Cargo.toml --all-targets --locked -- -D warnings
+cargo test --manifest-path edge/Cargo.toml --locked
+cargo build --manifest-path edge/Cargo.toml --release --locked
+```
 
-Pages 根目录仍为仓库根目录，输出目录 `.`。静态资源 URL 使用版本 query 做 cache busting，因此 `game.js` / `styles.css` 可安全使用 immutable cache；HTML 保持 `no-cache`。
+## v3 部署目标
 
-### Rust 实时服务
-
-复制 `server/config.example.json` 为本机配置文件并填写 Calls App ID/Secret。生产机当前默认读取：
+生产机目标目录仍全部放在 `D:\server`：
 
 ```text
+D:\server\bin\dtam-server.exe
+D:\server\bin\dtam-edge.exe
+D:\server\bin\dtam-tray.ps1
 D:\server\config\server.json
+D:\server\config\edge.json
+D:\server\data\rooms\
+D:\server\logs\
 ```
 
-生产监听：
+建议进程模型：
 
-```text
-127.0.0.1:28727
-```
+- `DTAM Rust Server`：SYSTEM / AtStartup，现有权威 Core。
+- `DTAM v3 Edge`：SYSTEM / AtStartup，新 WebRTC Edge。
+- `DTAM v3 Tray`：登录用户 `meteo` / AtLogOn，通知区 companion。
+- `Cloudflared`：继续作为 Windows Automatic service。
 
-再由 Cloudflare Tunnel 把 `rt-d1.lunarlab.uk` 转发到该地址。服务端只监听 loopback，不需要在路由器/Windows 防火墙公开游戏端口。
+Core TCP 端口 `28727` 继续只监听 loopback。Edge 的 HTTP/WSS 信令入口 `28729` 也只给本机 Cloudflared；真正的直连使用 Edge 的 WebRTC UDP sockets，因此 Windows 防火墙应按 **`dtam-edge.exe` 程序**允许需要的入站 UDP，而不是公开 Core TCP 端口。
 
-`calls_secret` **禁止提交到仓库**。
+`edge-d1.lunarlab.uk` 计划由现有 Cloudflare Tunnel 转发到 `http://127.0.0.1:28729`。浏览器始终保留 `rt-d1.lunarlab.uk` 最终回退。
 
 ## Cloudflare 使用边界
 
-纯 Pages 静态资源请求属于免费且不限请求量的静态资产流量；Pages Functions 才会计入 Workers 配额。v2.8 的实时游戏 WebSocket 已不经过 Worker/DO，所以之前 Durable Objects Free 的 100,000 requests/day 不再约束游戏实时同步。
+纯 Pages 静态资源请求属于免费且不限请求量的静态资产流量；Pages Functions 才会计入 Workers 配额。v2.8/v3 的生产实时游戏消息不经过 Worker/DO，因此旧 Durable Objects Free 请求额度不再是实时同步瓶颈。
 
-仍需关注 Cloudflare Realtime SFU 的独立用量。Cloudflare 当前为 Realtime SFU 提供每账户每月前 1,000 GB 下行免费额度，超过后按 Realtime 定价计算。Tunnel 是当前自托管入口，不应把它理解成 Durable Objects 那种按 WebSocket 消息计数的额度。
+Cloudflare Realtime SFU 的语音用量仍是独立额度。Tunnel 在 v3 中主要承担信令和 fallback；当 DataChannel 直连成功后，高频位置数据不再必须经过 Cloudflare Tunnel。
 
 ## 隐私与信任边界
 
-普通游戏中的死亡玩家文字只投递给死亡连接；语音目录按接收者过滤，Calls 远端音轨订阅还会在 Rust 代理重新校验。v2.8 进一步把 Calls session 绑定到创建它的房间玩家，阻止合法房间 token 操作其他 session。
+游戏 Core 继续负责位置合法性、墙体/速度校验、击杀/任务/投票状态以及幽灵隐私。WebRTC 直连只替换传输路径，不扩大浏览器的游戏权限。普通游戏中的死亡玩家文字只投递给死亡连接；语音目录按接收者过滤，Calls 远端音轨订阅仍由 Rust 代理重新校验。
+
+Calls App secret 只保存在本机锁定的 `server.json`，**禁止提交到仓库**。`edge.json` 只包含节点与网络配置，不需要复制 Calls secret。
 
 ## License
 
