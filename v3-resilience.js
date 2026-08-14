@@ -8,9 +8,25 @@ if (!proto || typeof proto._finalClose !== 'function' || typeof proto._setDirect
 const originalFinalClose = proto._finalClose;
 const originalSetDirect = proto._setDirect;
 const originalMarkOpen = proto._markOpen;
+const originalSend = proto.send;
 const originalClose = proto.close;
 const activeSockets = new Set();
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 15000, 30000];
+const POSITION_SYNC_TYPES = new Set([
+  'emergency',
+  'vent',
+  'report',
+  'kill',
+  'ability',
+  'task_begin',
+  'task_complete',
+  'sabotage_fix',
+]);
+
+function parsePacket(data) {
+  if (typeof data !== 'string' || data.length > 65536) return null;
+  try { return JSON.parse(data); } catch (_) { return null; }
+}
 
 function directStillHealthy(socket) {
   if (!socket?._direct) return false;
@@ -81,6 +97,19 @@ function scheduleRtcRetry(socket, trigger = 'transport-loss', immediate = false)
   }, delay);
 }
 
+// dtam-fast is still intentionally unreliable, but keeping it ordered prevents a newer
+// position sample from being delivered before an older one on the same SCTP stream.
+const nativeRtc = window.RTCPeerConnection;
+if (nativeRtc?.prototype?.createDataChannel) {
+  const originalCreateDataChannel = nativeRtc.prototype.createDataChannel;
+  nativeRtc.prototype.createDataChannel = function patchedCreateDataChannel(label, options) {
+    if (label === 'dtam-fast') {
+      options = { ...(options || {}), ordered: true, maxRetransmits: 0 };
+    }
+    return originalCreateDataChannel.call(this, label, options);
+  };
+}
+
 proto._markOpen = function patchedMarkOpen() {
   const result = originalMarkOpen.call(this);
   activeSockets.add(this);
@@ -124,6 +153,34 @@ proto._setDirect = async function patchedSetDirect(value, reason = '') {
   return result;
 };
 
+proto.send = function patchedSend(data) {
+  const packet = parsePacket(data);
+  const type = typeof packet?.t === 'string' ? packet.t : '';
+  if (type === 'pos') this._v3LastPositionPacket = data;
+
+  if (this._direct && POSITION_SYNC_TYPES.has(type)) {
+    const position = this._v3LastPositionPacket;
+    const control = this._control;
+    if (control?.readyState === 'open' && control.bufferedAmount < 524288) {
+      try {
+        if (position) control.send(position);
+        control.send(data);
+        return;
+      } catch (_) {
+        // Keep both packets on the same fallback stream if the control stream rejected them.
+      }
+    }
+
+    if (this._signal?.readyState === 1) {
+      if (position) this._signal.send(position);
+      this._signal.send(data);
+      return;
+    }
+  }
+
+  return originalSend.call(this, data);
+};
+
 proto.close = function patchedClose(code = 1000, reason = '') {
   clearRtcRetry(this);
   activeSockets.delete(this);
@@ -148,5 +205,5 @@ try {
   connection?.addEventListener?.('change', () => refreshAllRtc('network-interface-change'));
 } catch (_) {}
 
-console.log('DTAM v3 transport resilience enabled · dynamic IPv4/IPv6 ICE renegotiation + direct survival');
+console.log('DTAM v3 transport resilience enabled · dynamic IPv4/IPv6 ICE + ordered action sync');
 })();
