@@ -51,7 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo generate-lockfile --manifest-path edge/Cargo.toml
-          cargo fmt --manifest-path edge/Cargo.toml
+          cargo fmt --manifest-path edge/Cargo.toml -- --check
           cargo clippy --manifest-path edge/Cargo.toml --all-targets --locked -- -D warnings
           cargo test --manifest-path edge/Cargo.toml --locked
       - name: RustSec audit core
