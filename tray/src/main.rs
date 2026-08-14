@@ -97,13 +97,7 @@ mod windows_app {
         let thread_id = unsafe { GetCurrentThreadId() };
         let mut bootstrap_msg = unsafe { std::mem::zeroed::<MSG>() };
         unsafe {
-            PeekMessageW(
-                &mut bootstrap_msg,
-                std::ptr::null_mut(),
-                0,
-                0,
-                PM_NOREMOVE,
-            );
+            PeekMessageW(&mut bootstrap_msg, std::ptr::null_mut(), 0, 0, PM_NOREMOVE);
         }
 
         let (menu_tx, menu_rx) = mpsc::channel::<MenuEvent>();
