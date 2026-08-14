@@ -14,6 +14,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
+    collections::HashSet,
     env,
     error::Error,
     fs, io,
@@ -46,6 +47,7 @@ const VERSION: &str = "3.0.0";
 const MAX_EDGE_SESSIONS: usize = 64;
 const MAX_SIGNAL_MESSAGE_BYTES: usize = 128 * 1024;
 const MAX_APP_MESSAGE_BYTES: usize = 16 * 1024;
+const MAX_ICE_BIND_ADDRS: usize = 8;
 const SIGNAL_QUEUE: usize = 384;
 const CORE_QUEUE: usize = 256;
 const ICE_GATHER_WAIT: Duration = Duration::from_secs(6);
@@ -243,6 +245,57 @@ fn connecting_ip_from_headers(headers: &HeaderMap) -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
+fn useful_ice_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            !ip.is_loopback()
+                && !ip.is_unspecified()
+                && !ip.is_multicast()
+                && !ip.is_link_local()
+                && ip.octets() != [255, 255, 255, 255]
+        }
+        IpAddr::V6(ip) => {
+            !ip.is_loopback()
+                && !ip.is_unspecified()
+                && !ip.is_multicast()
+                && !ip.is_unicast_link_local()
+        }
+    }
+}
+
+fn ice_ip_priority(ip: IpAddr) -> u8 {
+    match ip {
+        IpAddr::V4(ip) if ip.is_private() => 0,
+        IpAddr::V6(ip) if ip.segments()[0] & 0xfe00 == 0xfc00 => 1,
+        IpAddr::V6(_) => 2,
+        IpAddr::V4(_) => 3,
+    }
+}
+
+fn current_udp_bind_addrs(fallback: Vec<String>) -> Vec<String> {
+    let mut unique = HashSet::new();
+    let mut addresses = Vec::<(u8, String)>::new();
+
+    if let Ok(interfaces) = if_addrs::get_if_addrs() {
+        for interface in interfaces {
+            let ip = interface.ip();
+            if !useful_ice_ip(ip) || !unique.insert(ip) {
+                continue;
+            }
+            addresses.push((ice_ip_priority(ip), SocketAddr::new(ip, 0).to_string()));
+        }
+    }
+
+    addresses.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    let selected: Vec<String> = addresses
+        .into_iter()
+        .take(MAX_ICE_BIND_ADDRS)
+        .map(|(_, address)| address)
+        .collect();
+
+    if selected.is_empty() { fallback } else { selected }
+}
+
 async fn health(State(state): State<AppState>) -> Json<Value> {
     Json(json!({
         "ok": true,
@@ -252,7 +305,7 @@ async fn health(State(state): State<AppState>) -> Json<Value> {
         "transport": "webrtc-datachannel+tunnel-fallback",
         "activeSessions": state.active_sessions.load(Ordering::Relaxed),
         "core": state.config.core_ws,
-        "addressing": "dynamic-ice",
+        "addressing": "dynamic-interface-ice",
     }))
 }
 
@@ -578,6 +631,13 @@ async fn negotiate_peer(
             ..Default::default()
         }]
     };
+    let fallback_udp_bind = config.udp_bind.clone();
+    let udp_addrs = tokio::task::spawn_blocking(move || current_udp_bind_addrs(fallback_udp_bind))
+        .await?;
+    eprintln!(
+        "[dtam-edge] ICE generation {generation} bind addresses: {}",
+        udp_addrs.join(", ")
+    );
     let pc = PeerConnectionBuilder::new()
         .with_configuration(
             RTCConfigurationBuilder::default()
@@ -585,7 +645,7 @@ async fn negotiate_peer(
                 .build(),
         )
         .with_handler(handler)
-        .with_udp_addrs(config.udp_bind.clone())
+        .with_udp_addrs(udp_addrs)
         .with_data_channel_send_buffer_limit(1024 * 1024)
         .build()
         .await?;
