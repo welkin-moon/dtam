@@ -48,7 +48,7 @@ Connection sequence:
 1. Browser opens `wss://edge-d1.lunarlab.uk/edge` through Cloudflare Tunnel.
 2. `dtam-edge` opens a local WebSocket to the authoritative v2.8 core, forwarding the existing room/name/create/token query.
 3. Browser creates two WebRTC DataChannels and sends a non-trickle SDP offer over the signaling WebSocket.
-4. `dtam-edge` creates the answer and gathers current host/server-reflexive ICE candidates.
+4. For that negotiation, `dtam-edge` enumerates the host's **current** usable IPv4/IPv6 interface addresses, binds ephemeral UDP sockets to those concrete addresses, and gathers host/server-reflexive ICE candidates.
 5. If ICE succeeds, gameplay switches to DataChannel while the WSS remains available for fallback/signaling.
 6. If ICE fails or later disconnects while WSS is still alive, browser and Edge replace only the WebRTC peer transport and gather fresh candidates; the local Core WebSocket and room/player identity stay unchanged.
 7. If the signaling WSS is lost after direct mode is already healthy, the direct DataChannel continues running instead of being closed just because the backup disappeared.
@@ -67,10 +67,13 @@ The Rust core remains authoritative on every path. Direct mode does **not** make
 
 Neither the server's private IPv4, public IPv4/NAT mapping, public IPv6, nor IPv6 privacy address is treated as permanent configuration.
 
-- `dtam-edge` binds WebRTC UDP using wildcard/ephemeral addresses (`0.0.0.0:0` and `[::]:0`).
-- Each new WebRTC negotiation gathers the addresses that are valid **at that moment**.
-- STUN-derived server-reflexive candidates are regenerated on negotiation, so a changed public IPv4 NAT mapping is not persisted in config.
-- IPv6 prefix/privacy-address changes are handled the same way: old candidates may die, then a replacement peer gathers the current IPv6 candidates.
+- Before each server-side WebRTC negotiation, `dtam-edge` enumerates the machine's current non-loopback IPv4/IPv6 addresses.
+- It binds ephemeral UDP ports to the selected **concrete** interface addresses, rather than assuming a wildcard socket will magically become a LAN host candidate.
+- Private IPv4 (`10/8`, `172.16/12`, `192.168/16`) is prioritized, followed by IPv6 ULA/global addresses; the candidate bind list is capped to keep per-connection socket use bounded.
+- Link-local/loopback/multicast/unspecified addresses are excluded from automatic binding. This avoids unusable `0.0.0.0`, `::`, `127.0.0.1`, `::1`, `169.254/16`, and scope-dependent `fe80::/10` candidates.
+- `edge.json`'s `udp_bind` values are only an emergency fallback if interface enumeration yields no usable address; normal operation does not pin current addresses into config.
+- STUN-derived server-reflexive candidates are regenerated on each negotiation, so a changed public IPv4 NAT mapping is not persisted in config.
+- IPv6 prefix/privacy-address changes are handled the same way: old candidates may die, then a replacement peer enumerates and binds the current IPv6 addresses.
 - Browser `online` / network-interface change signals can proactively trigger replacement ICE negotiation while the WSS fallback remains connected.
 - The Edge `node_id`, DNS endpoint, room number, player id and resume token are independent of any particular IP address.
 
@@ -86,13 +89,13 @@ This also avoids coupling future dual-server routing to changing residential IP 
 
 ## LAN behavior
 
-The Edge WebRTC transport binds UDP on IPv4 and IPv6 wildcard/ephemeral sockets. ICE host candidates can therefore include the server PC's current LAN address. A browser on the same LAN can select a private candidate pair and avoid Cloudflare entirely after signaling.
+The Edge WebRTC transport enumerates the server PC's current LAN interfaces for each negotiation and binds ephemeral UDP sockets to those real addresses. A browser on the same LAN can therefore select an actual private host candidate such as `192.168.x.x` or `10.x.x.x` and avoid Cloudflare entirely after signaling.
 
-If DHCP later changes that LAN address, the old candidate is disposable: replacement negotiation gathers the new address instead of requiring an Edge config edit or service restart.
+If DHCP later changes that LAN address, the old candidate is disposable: replacement negotiation enumerates the new address instead of requiring an Edge config edit or service restart.
 
 This is intentionally preferable to making the HTTPS page connect to `ws://192.168.x.x`: that would cause mixed-content/TLS problems and would require certificate handling for private IPs. WebRTC keeps the page HTTPS while the data transport can use the best ICE candidate pair.
 
-The Windows firewall must allow inbound UDP for the **`dtam-edge.exe` program**. There is no need to expose the core TCP port `28727`; it remains loopback-only.
+The Windows firewall must allow inbound UDP for the **`dtam-edge.exe` program**. There is no need to expose the core TCP port `28727`; it remains loopback-only. Because the rule is program-scoped rather than address-scoped, DHCP and IPv6 address changes do not require regenerating firewall rules.
 
 ## NAT2-style behavior
 
@@ -133,7 +136,7 @@ Recommended production split:
 
 The tray is deliberately separate because a SYSTEM process in Session 0 cannot reliably provide an interactive notification-area icon in the logged-in desktop session.
 
-The tray polls loopback health endpoints and shows Core/Edge state and Edge session count. Exiting the tray does not stop either server.
+The tray polls loopback health endpoints and re-reads the current IPv4/IPv6 addresses every five seconds. It shows Core/Edge state and Edge session count; exiting the tray does not stop either server.
 
 ## Planned production paths
 
