@@ -27,6 +27,8 @@ jobs:
           node --check game.js
           node --check v3-bootstrap.js
           node --check v3-resilience.js
+          node --input-type=module --check < p2p-entry.js
+          node --input-type=module --check < p2p-game-room-patch.js
           cp worker.js /tmp/dtam-worker.mjs
           node --check /tmp/dtam-worker.mjs
           node scripts/test.cjs
