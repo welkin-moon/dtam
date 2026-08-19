@@ -1,4 +1,4 @@
-import { GameRoom } from './worker.js?v=p2p-browser-host-1';
+import { GameRoom } from './worker.js?v=p2p-browser-host-3';
 
 const originalWebSocketMessage = GameRoom.prototype.webSocketMessage;
 GameRoom.prototype.webSocketMessage = async function patchedBrowserHostMessage(ws, message) {
