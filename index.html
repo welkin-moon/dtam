@@ -26,7 +26,7 @@
     <div id="menu">
         <button type="button" class="theme-toggle" id="menuThemeBtn" aria-label="切换主题">深色</button>
         <main class="menu-content">
-            <header class="menu-brand"><h1 class="logo">Among Us <span>东滩版</span></h1><p class="sub">P2P Lab · 浏览器房主权威 · 家中服务器 fallback</p></header>
+            <header class="menu-brand"><h1 class="logo">Among Us <span>东滩版</span></h1><p class="sub">P2P Lab · 浏览器房主权威 · CF 只撮合 · 家中服务器 fallback</p></header>
             <div class="card">
                 <div class="field"><label for="playerNameInput">昵称</label><input type="text" id="playerNameInput" placeholder="输入昵称" maxlength="12" value="玩家" autocomplete="nickname" /></div>
                 <div class="profile-picker">
@@ -34,7 +34,7 @@
                     <div class="profile-picker-actions">
                         <input type="file" id="avatarInput" accept="image/*" hidden />
                         <div><button type="button" class="btn btn-outline profile-btn" id="avatarChooseBtn">上传头像</button><button type="button" class="btn btn-outline profile-btn" id="avatarClearBtn">清除</button></div>
-                        <small>实验版：游戏数据优先浏览器之间 WebRTC 直连；失败才尝试 rt-d1。</small>
+                        <small>实验版：Cloudflare 仅用于入房 SDP mailbox；建链后游戏数据直接 WebRTC。</small>
                     </div>
                 </div>
                 <div class="row-buttons"><button type="button" class="btn btn-primary" id="createRoomBtn">创建 P2P 房间</button><button type="button" class="btn btn-outline" id="showJoinBtn">加入 P2P 房间</button></div>
@@ -58,7 +58,7 @@
         </div>
         <div id="gameToast" aria-live="polite">等待玩家加入…</div>
     </div>
-    <script type="module" src="/p2p-game-room-patch.js?v=p2p-browser-host-1"></script>
-    <script type="module" src="/p2p-entry.js?v=p2p-browser-host-1"></script>
+    <script type="module" src="/p2p-game-room-patch.js?v=p2p-browser-host-3"></script>
+    <script type="module" src="/p2p-cf-mailbox.js?v=p2p-cf-mailbox-1"></script>
 </body>
 </html>
