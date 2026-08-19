@@ -1,0 +1,23 @@
+name: P2P Lab Check
+
+on:
+  push:
+    branches: [p2p-browser-host-lab]
+  workflow_dispatch:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check browser modules
+        run: |
+          cp p2p-cf-mailbox.js /tmp/p2p-cf-mailbox.mjs
+          cp p2p-game-room-patch.js /tmp/p2p-game-room-patch.mjs
+          cp workers/p2p-signal.js /tmp/p2p-signal.mjs
+          node --check /tmp/p2p-cf-mailbox.mjs
+          node --check /tmp/p2p-game-room-patch.mjs
+          node --check /tmp/p2p-signal.mjs
