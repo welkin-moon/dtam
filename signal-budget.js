@@ -1,8 +1,8 @@
 const NativeFetch = window.fetch.bind(window);
 const SIGNAL_HOST = 'p2p-signal.lunarlab.uk';
-const FAST_MS = 2200;
-const VISIBLE_STEPS = [2200, 3200, 4500, 6000, 8000];
-const HIDDEN_MS = 20000;
+const FAST_MS = 1800;
+const VISIBLE_STEPS = [1800, 2200, 2600, 3000];
+const HIDDEN_MS = 10000;
 const states = new Map();
 const stats = window.__DTAM_SIGNAL_BUDGET__ = {
   networkRequests: 0,
