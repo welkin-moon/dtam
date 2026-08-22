@@ -17,12 +17,14 @@ jobs:
         run: |
           cp net-config.js /tmp/net-config.mjs
           cp signal-budget.js /tmp/signal-budget.mjs
+          cp recovery-fanout.js /tmp/recovery-fanout.mjs
           cp hybrid-transport.js /tmp/hybrid-transport.mjs
           cp game-polish.js /tmp/game-polish.mjs
           cp p2p-game-room-patch.js /tmp/p2p-game-room-patch.mjs
           cp workers/p2p-signal-v2.js /tmp/p2p-signal-v2.mjs
           node --check /tmp/net-config.mjs
           node --check /tmp/signal-budget.mjs
+          node --check /tmp/recovery-fanout.mjs
           node --check /tmp/hybrid-transport.mjs
           node --check /tmp/game-polish.mjs
           node --check /tmp/p2p-game-room-patch.mjs
