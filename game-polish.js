@@ -5,11 +5,6 @@ function loadRules(){try{return JSON.parse(localStorage.getItem(RULE_KEY)||'null
 function saveRules(){const out={};for(const id of RULE_IDS){const el=document.getElementById(id);if(!el)continue;out[id]=el.type==='checkbox'?!!el.checked:el.value}try{localStorage.setItem(RULE_KEY,JSON.stringify(out))}catch(_){}}
 function restoreRules(){const saved=loadRules();if(!saved)return;for(const [id,value] of Object.entries(saved)){const el=document.getElementById(id);if(!el)continue;if(el.type==='checkbox')el.checked=!!value;else if([...el.options||[]].some(o=>o.value===String(value)))el.value=String(value)}const first=document.getElementById('ruleNormalImpostors');if(first)first.dispatchEvent(new Event('change',{bubbles:true}))}
 
-function guardTypingControls(){
-  document.addEventListener('keydown',e=>{const t=e.target;if(t instanceof HTMLInputElement||t instanceof HTMLTextAreaElement||t instanceof HTMLSelectElement||t?.isContentEditable)e.stopImmediatePropagation()},true);
-  document.addEventListener('keyup',e=>{const t=e.target;if(t instanceof HTMLInputElement||t instanceof HTMLTextAreaElement||t instanceof HTMLSelectElement||t?.isContentEditable)e.stopImmediatePropagation()},true);
-}
-
 function installRulePersistence(){for(const id of RULE_IDS){const el=document.getElementById(id);if(el)el.addEventListener('change',saveRules)}restoreRules()}
 
 function installHostVisibilityWarning(){
@@ -17,7 +12,7 @@ function installHostVisibilityWarning(){
   const apply=()=>{
     const mode=String(window.__DTAM_NET__?.mode||'');
     const host=mode==='browser-host'||mode==='p2p-recovered-host';
-    if(document.hidden&&host){previousTitle=document.title;document.title='⚠ P2P 房主请保持页面前台 · '+previousTitle;const badge=document.getElementById('p2pTransportStatus');if(badge){badge.textContent='P2P 房主 · 页面后台';badge.title='移动浏览器可能冻结后台页面；建议房主保持此页前台'}}else if(!document.hidden&&document.title.startsWith('⚠ P2P 房主请保持页面前台 · ')){document.title=previousTitle}}
+    if(document.hidden&&host){previousTitle=document.title;document.title='⚠ P2P 房主请保持页面前台 · '+previousTitle;const badge=document.getElementById('p2pTransportStatus');if(badge){badge.textContent='P2P 房主 · 页面后台';badge.title='移动浏览器可能冻结后台页面；信令轮询已自动降频'}}else if(!document.hidden&&document.title.startsWith('⚠ P2P 房主请保持页面前台 · ')){document.title=previousTitle}}
   document.addEventListener('visibilitychange',apply);
 }
 
@@ -25,7 +20,20 @@ function installNetworkDiagnostics(){
   const more=document.getElementById('hudMoreMenu');
   if(!more||document.getElementById('networkDiagBtn'))return;
   const btn=document.createElement('button');btn.type='button';btn.id='networkDiagBtn';btn.textContent='网络状态';
-  btn.onclick=()=>{const d=window.__DTAM_NET__||{};const c=d.configured||{};const text=[`模式：${c.mode||d.mode||'unknown'}`,`当前：${d.mode||'unknown'}`,d.pair?`ICE：${d.pair}`:'',c.serverUrl?`Server：${c.serverUrl}`:'',d.lastError?`最近回退：${d.lastError}`:''].filter(Boolean).join('\n');alert(text)};
+  btn.onclick=()=>{
+    const d=window.__DTAM_NET__||{},c=d.configured||{},b=window.__DTAM_SIGNAL_BUDGET__||{};
+    const text=[
+      `配置：${c.mode||'unknown'}`,
+      `当前：${d.mode||'unknown'}`,
+      d.pair?`ICE：${d.pair}`:'',
+      c.serverUrl?`Server：${c.serverUrl}`:'',
+      d.lastError?`最近回退：${d.lastError}`:'',
+      Number.isFinite(b.networkRequests)?`本页信令实际请求：${b.networkRequests}`:'',
+      Number.isFinite(b.suppressedPolls)?`已省略空轮询：${b.suppressedPolls}`:'',
+      Number.isFinite(b.currentIntervalMs)?`当前大厅轮询间隔：${(b.currentIntervalMs/1000).toFixed(1)}s`:'',
+    ].filter(Boolean).join('\n');
+    alert(text)
+  };
   more.insertBefore(btn,more.lastElementChild);
 }
 
@@ -37,5 +45,15 @@ function installInviteCopy(){
   room.insertAdjacentElement('afterend',btn);
 }
 
-function boot(){guardTypingControls();installRulePersistence();installHostVisibilityWarning();installNetworkDiagnostics();installInviteCopy()}
+function installInputSafety(){
+  const clearMovement=()=>{
+    try{window.dispatchEvent(new Event('blur'))}catch(_){}
+  };
+  document.addEventListener('focusin',e=>{
+    const t=e.target;
+    if(t instanceof HTMLInputElement||t instanceof HTMLTextAreaElement||t instanceof HTMLSelectElement||t?.isContentEditable)clearMovement();
+  });
+}
+
+function boot(){installInputSafety();installRulePersistence();installHostVisibilityWarning();installNetworkDiagnostics();installInviteCopy()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
