@@ -1,8 +1,8 @@
 const NativeFetch = window.fetch.bind(window);
 const SIGNAL_HOST = 'p2p-signal.lunarlab.uk';
-const FAST_MS = 1800;
-const VISIBLE_STEPS = [1800, 2200, 2600, 3000];
-const HIDDEN_MS = 10000;
+const FAST_MS = 1200;
+const VISIBLE_STEPS = [1200, 1600, 2100, 2600, 3000];
+const HIDDEN_MS = 12000;
 const states = new Map();
 const stats = window.__DTAM_SIGNAL_BUDGET__ = {
   networkRequests: 0,
@@ -61,7 +61,7 @@ window.fetch = async function budgetedFetch(input, init = {}) {
     state.roomState = String(data.state || state.roomState || 'lobby');
     state.emptyStreak = peers.length ? 0 : Math.min(state.emptyStreak + 1, VISIBLE_STEPS.length - 1);
     const nextInterval = document.hidden ? HIDDEN_MS : VISIBLE_STEPS[Math.min(state.emptyStreak, VISIBLE_STEPS.length - 1)];
-    state.nextAt = Date.now() + Math.max(FAST_MS, nextInterval - FAST_MS / 2);
+    state.nextAt = Date.now() + Math.max(FAST_MS, nextInterval - FAST_MS / 3);
     stats.currentIntervalMs = nextInterval;
   } catch (_) {
     state.nextAt = Date.now() + FAST_MS;
