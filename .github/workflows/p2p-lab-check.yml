@@ -33,3 +33,11 @@ jobs:
           node --check /tmp/game-polish.mjs
           node --check /tmp/p2p-game-room-patch.mjs
           node --check /tmp/p2p-signal-v2.mjs
+      - name: Guard player-facing UX
+        run: |
+          grep -q '/player-shell.css?v=player-1' index.html
+          ! grep -E 'P2P Lab|TURN 中继|家庭 Server|选择联机方式' index.html
+          grep -q 'debugUiEnabled' net-config.js
+          grep -q '#actionStack #interactBtn' player-shell.css
+          grep -q 'position: static !important' player-shell.css
+          grep -q 'html:not(.dtam-debug) #p2pTransportStatus' player-shell.css
