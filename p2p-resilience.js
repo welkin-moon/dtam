@@ -5,9 +5,11 @@ const BaseWebSocket = window.WebSocket;
 const RECOVER_KEY = 'au-dtam-p2p-recovery:';
 const SNAP_KEY = 'au-dtam-p2p-snapshot:';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const rid = () => { try { return crypto.randomUUID().replace(/-/g, ''); } catch (_) { return Math.random().toString(36).slice(2) + Date.now().toString(36); } };
 
 function parse(value) { try { return JSON.parse(String(value)); } catch (_) { return null; } }
 function loadJson(storage, key) { try { return JSON.parse(storage.getItem(key) || 'null'); } catch (_) { return null; } }
+function saveRecovery(room, value) { try { localStorage.setItem(RECOVER_KEY + room, JSON.stringify(value)); } catch (_) {} }
 function badge(text, title = text) {
   const el = document.getElementById('p2pTransportStatus');
   if (el) { el.textContent = text; el.title = title; }
@@ -19,6 +21,23 @@ async function signal(path, options = {}) {
   const data = await r.json().catch(() => ({}));
   if (!r.ok && r.status !== 202) throw Object.assign(new Error(data.message || `signal ${r.status}`), { code:data.code || 'signal_error', data });
   return data;
+}
+
+async function waitIceFast(pc, timeout = 2400) {
+  if (pc.iceGatheringState === 'complete') return;
+  await new Promise(resolve => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      pc.removeEventListener('icegatheringstatechange', onChange);
+      resolve();
+    };
+    const onChange = () => pc.iceGatheringState === 'complete' && finish();
+    const timer = setTimeout(finish, timeout);
+    pc.addEventListener('icegatheringstatechange', onChange);
+  });
 }
 
 function stopGameplayWatch(sock) {
@@ -74,10 +93,74 @@ function patchSocket(sock) {
     return this.guest(rec || null);
   };
 
+  sock.guest = async function resilientGuest(rec = null) {
+    const peerId = rid();
+    badge('正在加入房间…');
+    let joinToken = '';
+    try {
+      const joined = await signal(`/v2/rooms/${this.room}/join`, {
+        method:'POST',
+        body:JSON.stringify({ peerId, recoveryToken:rec?.recoveryToken || '' }),
+      });
+      joinToken = String(joined.joinToken || '');
+      if (rec) saveRecovery(this.room, { ...rec, epoch:Number(joined.epoch || rec.epoch || 1) });
+    } catch (e) {
+      if (['room_not_found','game_in_progress'].includes(e.code) && this.cfg?.mode === 'p2p') {
+        this.open('p2p-error');
+        this.deliver(JSON.stringify({ t:'error', code:e.code, message:e.message }));
+        return setTimeout(() => this.finish(4404, e.code, true), 60);
+      }
+      return this.fallback('房间撮合失败');
+    }
+
+    let offer = null;
+    const offerPoll = [120,180,260,380,550,750,1000,1300,1700,2200,2600];
+    for (const delay of offerPoll) {
+      await sleep(delay);
+      if (this.closed) return;
+      try {
+        const data = await signal(`/v2/rooms/${this.room}/offers/${peerId}?joinToken=${encodeURIComponent(joinToken)}`);
+        if (data.ready) { offer = data.offer; break; }
+      } catch (e) {
+        if (e.code === 'peer_not_found') return this.fallback('加入请求已过期');
+      }
+    }
+    if (!offer) return this.fallback('等待房主响应超时');
+
+    const pc = this.pc = new RTCPeerConnection({
+      iceServers:[{ urls:'stun:stun.cloudflare.com:3478' }],
+      bundlePolicy:'max-bundle',
+      iceCandidatePoolSize:4,
+    });
+    pc.ondatachannel = e => this.bind(e.channel);
+    pc.onconnectionstatechange = async () => {
+      if (pc.connectionState === 'connected') {
+        inspectPc(pc);
+      } else if (['failed','closed'].includes(pc.connectionState) && !this.closed) {
+        if (!this.opened) this.fallback('建立连接失败');
+        else this.finish(1006, 'P2P host lost', false);
+      }
+    };
+
+    try {
+      await pc.setRemoteDescription(offer);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await waitIceFast(pc, 2400);
+      await signal(`/v2/rooms/${this.room}/answers/${peerId}`, {
+        method:'POST',
+        body:JSON.stringify({ joinToken, answer:pc.localDescription }),
+      });
+    } catch (_) {
+      return this.fallback('提交连接信息失败');
+    }
+    setTimeout(() => !this.opened && this.fallback('建立连接超时'), 7000);
+  };
+
   sock.fallback = async function resilientFallback(reason) {
     if (this.closed || this.opened) return;
     const candidate = this.__dtamRecoveryCandidate;
-    const recoverable = candidate && !this.__dtamRecoveryAttempted && /offer|ICE|answer|房间不可用/i.test(String(reason || ''));
+    const recoverable = candidate && !this.__dtamRecoveryAttempted && /offer|ICE|answer|房间不可用|响应超时|建立连接/i.test(String(reason || ''));
     if (recoverable) {
       this.__dtamRecoveryAttempted = true;
       badge('房主连接中断，正在迁移…', String(reason || ''));
@@ -155,4 +238,4 @@ for (const key of ['CONNECTING','OPEN','CLOSING','CLOSED']) {
   try { Object.defineProperty(WrappedWebSocket, key, { value:BaseWebSocket[key] }); } catch (_) {}
 }
 window.WebSocket = WrappedWebSocket;
-diag({ resilience:'in-game-reconnect+delayed-recovery', serverPolicy:getNetworkConfig().mode === 'server' ? 'manual-server' : 'p2p-only' });
+diag({ resilience:'fast-join+in-game-reconnect+delayed-recovery', serverPolicy:getNetworkConfig().mode === 'server' ? 'manual-server' : 'p2p-only' });
