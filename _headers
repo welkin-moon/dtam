@@ -12,6 +12,21 @@
 /game.js
   Cache-Control: public, max-age=3600, immutable
 
+/net-config.js
+  Cache-Control: public, max-age=300, must-revalidate
+
+/signal-budget.js
+  Cache-Control: public, max-age=300, must-revalidate
+
+/hybrid-transport.js
+  Cache-Control: public, max-age=300, must-revalidate
+
+/game-polish.js
+  Cache-Control: public, max-age=300, must-revalidate
+
+/p2p-game-room-patch.js
+  Cache-Control: public, max-age=300, must-revalidate
+
 /p2p-entry.js
   Cache-Control: public, max-age=300, must-revalidate
 
