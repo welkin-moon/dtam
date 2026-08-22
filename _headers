@@ -9,6 +9,9 @@
 /index.html
   Cache-Control: no-cache
 
+/player-shell.css
+  Cache-Control: no-cache
+
 /game.js
   Cache-Control: public, max-age=3600, immutable
 
@@ -31,7 +34,7 @@
   Cache-Control: public, max-age=300, must-revalidate
 
 /game-polish.js
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache
 
 /p2p-game-room-patch.js
   Cache-Control: public, max-age=300, must-revalidate
