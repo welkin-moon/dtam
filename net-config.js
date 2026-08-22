@@ -9,6 +9,10 @@ function safeGet(key, fallback = '') {
 function safeSet(key, value) {
   try { localStorage.setItem(key, value); } catch (_) {}
 }
+function debugUiEnabled() {
+  const query = new URLSearchParams(location.search);
+  return query.get('debug') === '1' || safeGet('au-dtam-debug', '') === '1';
+}
 
 export function normalizeServerUrl(value = DEFAULT_SERVER) {
   let raw = String(value || '').trim() || DEFAULT_SERVER;
@@ -47,28 +51,31 @@ export function serverTargetFor(originalUrl, configuredUrl) {
 export function describeNetworkMode(config = getNetworkConfig()) {
   if (config.mode === 'server') return 'Server';
   if (config.mode === 'p2p') return '仅 P2P';
-  return 'Auto · P2P + 中继兜底';
+  return 'Auto';
 }
 
 function injectNetworkPanel() {
+  if (!debugUiEnabled()) return;
+  document.documentElement.classList.add('dtam-debug');
   const card = document.querySelector('#menu .card');
   if (!card || document.getElementById('networkMode')) return;
   const profile = card.querySelector('.profile-picker');
-  const wrap = document.createElement('div');
+  const wrap = document.createElement('details');
   wrap.id = 'networkPanel';
   wrap.className = 'network-panel';
   wrap.innerHTML = `
+    <summary>开发者网络设置</summary>
     <div class="network-panel-head"><strong>联机方式</strong><span id="networkModeHint"></span></div>
     <div class="network-grid">
       <label class="field network-field"><span>模式</span><select id="networkMode">
-        <option value="auto">Auto · 直连优先，TURN 中继兜底</option>
-        <option value="p2p">仅 P2P · 只尝试 STUN 直连</option>
-        <option value="server">Server · 手动使用独立服务器</option>
+        <option value="auto">Auto</option>
+        <option value="p2p">仅 P2P</option>
+        <option value="server">Server</option>
       </select></label>
       <label class="field network-field" id="serverUrlField"><span>Server WebSocket</span><input id="serverUrlInput" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="wss://example.com/ws" /></label>
     </div>
     <div class="network-actions"><button type="button" class="btn btn-outline profile-btn" id="serverResetBtn">恢复默认 Server</button><small id="serverValidation"></small></div>
-    <small class="network-note">Auto 完全不依赖 Server：优先浏览器直连；NAT / 防火墙无法打洞时才使用 Cloudflare TURN 中继。Server 仅在你手动选择 Server 模式时连接。</small>`;
+    <small class="network-note">仅用于联机调试。普通玩家默认使用 Auto。</small>`;
   if (profile) profile.insertAdjacentElement('afterend', wrap); else card.prepend(wrap);
 
   const modeEl = document.getElementById('networkMode');
@@ -105,7 +112,7 @@ function injectNetworkPanel() {
     fieldEl.classList.toggle('network-muted', mode !== 'server');
     serverEl.disabled = mode !== 'server';
     resetEl.disabled = mode !== 'server';
-    hintEl.textContent = mode === 'auto' ? '直连 + 中继兜底' : mode === 'p2p' ? '纯直连' : '手动服务器';
+    hintEl.textContent = mode;
     window.dispatchEvent(new CustomEvent('dtam-network-config', { detail: getNetworkConfig() }));
   };
   modeEl.addEventListener('change', sync);
@@ -116,8 +123,9 @@ function injectNetworkPanel() {
 
   const style = document.createElement('style');
   style.textContent = `
-    #networkPanel{margin:12px 0;padding:12px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:14px;background:color-mix(in srgb,currentColor 4%,transparent)}
-    .network-panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px}.network-panel-head span{font-size:12px;opacity:.7}
+    #networkPanel{margin:12px 0;padding:10px 12px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:12px;background:color-mix(in srgb,currentColor 4%,transparent)}
+    #networkPanel>summary{cursor:pointer;font-size:12px;font-weight:700;opacity:.75}
+    .network-panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:10px 0 8px}.network-panel-head span{font-size:12px;opacity:.7}
     .network-grid{display:grid;grid-template-columns:minmax(170px,.8fr) minmax(220px,1.4fr);gap:10px}.network-field{margin:0!important}.network-field span{display:block;font-size:12px;opacity:.72;margin-bottom:5px}
     .network-field select,.network-field input{width:100%;box-sizing:border-box}.network-muted{opacity:.45}.network-muted input:disabled{cursor:not-allowed}.network-actions{display:flex;align-items:center;gap:10px;margin-top:8px;min-height:28px}.network-actions small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.68}.network-actions small[data-state="error"]{color:#ef4444;opacity:1}.network-note{display:block;margin-top:6px;opacity:.65;line-height:1.45}
     @media(max-width:640px){.network-grid{grid-template-columns:1fr}.network-actions{align-items:flex-start;flex-direction:column}.network-actions small{white-space:normal}}
@@ -125,7 +133,9 @@ function injectNetworkPanel() {
   document.head.appendChild(style);
 }
 
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', injectNetworkPanel, { once: true });
-else injectNetworkPanel();
+if (debugUiEnabled()) {
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', injectNetworkPanel, { once: true });
+  else injectNetworkPanel();
+}
 
 export { DEFAULT_SERVER };
