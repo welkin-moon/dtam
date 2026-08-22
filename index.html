@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#0b0d10" />
-    <title>Among Us · 东滩版 · P2P Lab</title>
+    <title>Among Us · 东滩版</title>
     <script>
         (() => {
             try {
@@ -22,12 +22,13 @@
     <link rel="dns-prefetch" href="//p2p-signal.lunarlab.uk" />
     <link rel="dns-prefetch" href="//voice.lunarlab.uk" />
     <link rel="stylesheet" href="/styles.css?v=2.8.1" />
+    <link rel="stylesheet" href="/player-shell.css?v=player-1" />
 </head>
 <body>
     <div id="menu">
         <button type="button" class="theme-toggle" id="menuThemeBtn" aria-label="切换主题">深色</button>
         <main class="menu-content">
-            <header class="menu-brand"><h1 class="logo">Among Us <span>东滩版</span></h1><p class="sub">P2P Lab · 浏览器房主 · 直连优先 / TURN 中继兜底</p></header>
+            <header class="menu-brand"><h1 class="logo">Among Us <span>东滩版</span></h1><p class="sub">在线对局 · 自动连接</p></header>
             <div class="card">
                 <div class="field"><label for="playerNameInput">昵称</label><input type="text" id="playerNameInput" placeholder="输入昵称" maxlength="12" value="玩家" autocomplete="nickname" /></div>
                 <div class="profile-picker">
@@ -35,12 +36,12 @@
                     <div class="profile-picker-actions">
                         <input type="file" id="avatarInput" accept="image/*" hidden />
                         <div><button type="button" class="btn btn-outline profile-btn" id="avatarChooseBtn">上传头像</button><button type="button" class="btn btn-outline profile-btn" id="avatarClearBtn">清除</button></div>
-                        <small>Auto 默认浏览器 P2P：Cloudflare 仅负责建链/恢复；能直连就不走中继，无法打洞时才使用 TURN。语音直接走 Cloudflare Realtime，不依赖家庭 Server。</small>
+                        <small>系统会自动选择可用的联机和语音线路。</small>
                     </div>
                 </div>
                 <div class="row-buttons"><button type="button" class="btn btn-primary" id="createRoomBtn">创建房间</button><button type="button" class="btn btn-outline" id="showJoinBtn">加入房间</button></div>
                 <div class="field" id="joinSection" style="display:none; margin-top:12px;"><label for="roomIdInput">房间号</label><div class="join-row"><input type="text" id="roomIdInput" placeholder="2 位数字" maxlength="2" inputmode="numeric" pattern="[0-9]{2}" autocomplete="off" /><button type="button" class="btn btn-primary" id="joinRoomBtn">加入</button></div></div>
-                <div id="menuStatus" aria-live="polite">输入昵称，选择联机方式，然后创建或加入房间</div>
+                <div id="menuStatus" aria-live="polite">输入昵称，然后创建或加入房间</div>
             </div>
         </main>
     </div>
@@ -54,13 +55,13 @@
         <div id="joystick"><div class="knob" id="joystickKnob"></div></div>
         <button type="button" id="interactBtn">互动</button>
         <div id="hud">
-            <div class="hud-left"><span class="room-tag">房间</span><button type="button" class="room-id" id="roomIdDisplay" title="复制房间号" aria-label="复制房间号">--</button><span id="connectionStatus" data-state="offline">离线</span><span id="latencyStatus" data-quality="unknown" title="实时往返延迟 RTT">-- ms</span><button type="button" id="playerCountBtn" aria-label="查看在线玩家" aria-expanded="false"><strong id="playerCountNum">1</strong> / 15</button></div>
+            <div class="hud-left"><span class="room-tag">房间</span><button type="button" class="room-id" id="roomIdDisplay" title="复制房间号" aria-label="复制房间号">--</button><span id="connectionStatus" data-state="offline">离线</span><span id="latencyStatus" data-quality="unknown" title="网络延迟">-- ms</span><button type="button" id="playerCountBtn" aria-label="查看在线玩家" aria-expanded="false"><strong id="playerCountNum">1</strong> / 15</button></div>
             <div class="hud-right"><span class="my-name"><span id="hudMyName">玩家</span></span><button type="button" id="mapBtn" title="任务地图" aria-expanded="false">地图</button><button type="button" id="micBtn" title="语音聊天" data-state="off">麦克风关</button><button type="button" id="chatToggle" aria-label="打开聊天" aria-expanded="false">聊天</button><div id="hudMoreWrap"><button type="button" id="moreBtn" aria-label="更多选项" aria-expanded="false">更多</button><div id="hudMoreMenu" hidden><button type="button" id="settingsBtn">切换主题</button><button type="button" class="btn-leave" id="leaveBtn">退出房间</button></div></div></div>
         </div>
         <div id="gameToast" aria-live="polite">等待玩家加入…</div>
     </div>
     <!-- v2.8 build compatibility marker: /game.js?v=2.8.1 -->
-    <script type="module" src="/net-config.js?v=hybrid-2"></script>
+    <script type="module" src="/net-config.js?v=player-1"></script>
     <script type="module" src="/signal-budget.js?v=serverless-1"></script>
     <script type="module" src="/runtime-policy.js?v=voice-turn-3"></script>
     <script type="module" src="/recovery-fanout.js?v=hybrid-1"></script>
