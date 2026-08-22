@@ -4,6 +4,8 @@ html:not(.dtam-debug) #networkPanel,
 html:not(.dtam-debug) #networkDiagBtn {
   display: none !important;
 }
+.hud-left > #copyInviteBtn { display: none !important; }
+#hudMoreMenu > #copyInviteBtn { display: flex !important; }
 
 #hud {
   top: max(8px, env(safe-area-inset-top)) !important;
@@ -143,10 +145,15 @@ html:not(.dtam-debug) #networkDiagBtn {
 #game.lobby-visible #gameMeta,
 #game.lobby-visible #actionStack,
 #game.lobby-visible #joystick,
-#game.lobby-visible #chatStream {
+#game.lobby-visible #chatStream,
+#game:has(#lobbyPanel.show) #gameMeta,
+#game:has(#lobbyPanel.show) #actionStack,
+#game:has(#lobbyPanel.show) #joystick,
+#game:has(#lobbyPanel.show) #chatStream {
   display: none !important;
 }
-#game.lobby-visible #lobbyPanel.show {
+#game.lobby-visible #lobbyPanel.show,
+#game:has(#lobbyPanel.show) #lobbyPanel.show {
   z-index: 30 !important;
 }
 
@@ -225,7 +232,8 @@ html:not(.dtam-debug) #networkDiagBtn {
     width: auto !important;
     max-height: calc(100dvh - max(5px, env(safe-area-inset-top)) - env(safe-area-inset-bottom) - 52px) !important;
   }
-  #game.lobby-visible #lobbyPanel.show {
+  #game.lobby-visible #lobbyPanel.show,
+  #game:has(#lobbyPanel.show) #lobbyPanel.show {
     top: calc(max(5px, env(safe-area-inset-top)) + 42px) !important;
     bottom: max(7px, env(safe-area-inset-bottom)) !important;
     left: 50% !important;
