@@ -20,6 +20,7 @@ jobs:
           cp runtime-policy.js /tmp/runtime-policy.mjs
           cp recovery-fanout.js /tmp/recovery-fanout.mjs
           cp hybrid-transport.js /tmp/hybrid-transport.mjs
+          cp p2p-resilience.js /tmp/p2p-resilience.mjs
           cp game-polish.js /tmp/game-polish.mjs
           cp p2p-game-room-patch.js /tmp/p2p-game-room-patch.mjs
           cp workers/p2p-signal-v2.js /tmp/p2p-signal-v2.mjs
@@ -28,6 +29,7 @@ jobs:
           node --check /tmp/runtime-policy.mjs
           node --check /tmp/recovery-fanout.mjs
           node --check /tmp/hybrid-transport.mjs
+          node --check /tmp/p2p-resilience.mjs
           node --check /tmp/game-polish.mjs
           node --check /tmp/p2p-game-room-patch.mjs
           node --check /tmp/p2p-signal-v2.mjs
