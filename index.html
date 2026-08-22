@@ -18,7 +18,9 @@
         })();
     </script>
     <link rel="preconnect" href="https://p2p-signal.lunarlab.uk" crossorigin />
+    <link rel="preconnect" href="https://voice.lunarlab.uk" crossorigin />
     <link rel="dns-prefetch" href="//p2p-signal.lunarlab.uk" />
+    <link rel="dns-prefetch" href="//voice.lunarlab.uk" />
     <link rel="stylesheet" href="/styles.css?v=2.8.1" />
 </head>
 <body>
@@ -33,7 +35,7 @@
                     <div class="profile-picker-actions">
                         <input type="file" id="avatarInput" accept="image/*" hidden />
                         <div><button type="button" class="btn btn-outline profile-btn" id="avatarChooseBtn">上传头像</button><button type="button" class="btn btn-outline profile-btn" id="avatarClearBtn">清除</button></div>
-                        <small>Auto 默认浏览器 P2P：Cloudflare 仅负责短时建链信令；能直连就不走中继，无法打洞时才使用 TURN。不会自动尝试当前离线的家庭 Server。</small>
+                        <small>Auto 默认浏览器 P2P：Cloudflare 仅负责建链/恢复；能直连就不走中继，无法打洞时才使用 TURN。语音直接走 Cloudflare Realtime，不依赖家庭 Server。</small>
                     </div>
                 </div>
                 <div class="row-buttons"><button type="button" class="btn btn-primary" id="createRoomBtn">创建房间</button><button type="button" class="btn btn-outline" id="showJoinBtn">加入房间</button></div>
@@ -60,10 +62,10 @@
     <!-- v2.8 build compatibility marker: /game.js?v=2.8.1 -->
     <script type="module" src="/net-config.js?v=hybrid-2"></script>
     <script type="module" src="/signal-budget.js?v=serverless-1"></script>
-    <script type="module" src="/runtime-policy.js?v=turn-2"></script>
+    <script type="module" src="/runtime-policy.js?v=voice-turn-3"></script>
     <script type="module" src="/recovery-fanout.js?v=hybrid-1"></script>
-    <script type="module" src="/p2p-game-room-patch.js?v=p2p-browser-host-5"></script>
+    <script type="module" src="/p2p-game-room-patch.js?v=voice-sync-6"></script>
     <script type="module" src="/hybrid-transport.js?v=hybrid-3"></script>
-    <script type="module" src="/game-polish.js?v=ux-3"></script>
+    <script type="module" src="/p2p-resilience.js?v=recovery-1"></script>
 </body>
 </html>
