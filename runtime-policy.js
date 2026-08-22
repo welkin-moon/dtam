@@ -82,7 +82,8 @@ if (typeof NativePC === 'function') {
           if (!iceServers.some(x => JSON.stringify(x?.urls) === urls)) iceServers.push(server);
         }
       }
-      super({ ...config, iceServers });
+      const pool = Number.isInteger(config?.iceCandidatePoolSize) ? config.iceCandidatePoolSize : 4;
+      super({ ...config, iceServers, iceCandidatePoolSize:pool });
     }
   }
   if (typeof NativePC.generateCertificate === 'function') {
