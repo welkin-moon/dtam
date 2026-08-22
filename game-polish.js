@@ -1,10 +1,11 @@
 const RULE_KEY='au-dtam-rules-v2';
 const RULE_IDS=['ruleNormalImpostors','ruleShapeshifters','rulePhantoms','ruleVipers','ruleEngineers','ruleScientists','ruleTrackers','ruleNoisemakers','ruleDetectives','ruleGuardianAngels','ruleTasks','ruleSpeed','ruleKill','ruleDiscussion','ruleVoting','ruleEmergency','ruleSabotage','ruleConfirm'];
+const DEBUG_UI=(()=>{try{const q=new URLSearchParams(location.search);return q.get('debug')==='1'||localStorage.getItem('au-dtam-debug')==='1'}catch(_){return false}})();
+if(DEBUG_UI)document.documentElement.classList.add('dtam-debug');
 
 function loadRules(){try{return JSON.parse(localStorage.getItem(RULE_KEY)||'null')}catch(_){return null}}
 function saveRules(){const out={};for(const id of RULE_IDS){const el=document.getElementById(id);if(!el)continue;out[id]=el.type==='checkbox'?!!el.checked:el.value}try{localStorage.setItem(RULE_KEY,JSON.stringify(out))}catch(_){}}
 function restoreRules(){const saved=loadRules();if(!saved)return;for(const [id,value] of Object.entries(saved)){const el=document.getElementById(id);if(!el)continue;if(el.type==='checkbox')el.checked=!!value;else if([...el.options||[]].some(o=>o.value===String(value)))el.value=String(value)}const first=document.getElementById('ruleNormalImpostors');if(first)first.dispatchEvent(new Event('change',{bubbles:true}))}
-
 function installRulePersistence(){for(const id of RULE_IDS){const el=document.getElementById(id);if(el)el.addEventListener('change',saveRules)}restoreRules()}
 
 function installHostVisibilityWarning(){
@@ -12,17 +13,24 @@ function installHostVisibilityWarning(){
   const apply=()=>{
     const mode=String(window.__DTAM_NET__?.mode||'');
     const host=mode==='browser-host'||mode==='p2p-recovered-host';
-    if(document.hidden&&host){previousTitle=document.title;document.title='⚠ P2P 房主请保持页面前台 · '+previousTitle;const badge=document.getElementById('p2pTransportStatus');if(badge){badge.textContent='P2P 房主 · 页面后台';badge.title='移动浏览器可能冻结后台页面；重连信令会自动降频'}}else if(!document.hidden&&document.title.startsWith('⚠ P2P 房主请保持页面前台 · ')){document.title=previousTitle}}
+    if(document.hidden&&host){
+      previousTitle=document.title;
+      document.title='⚠ 房主请保持游戏页面前台 · '+previousTitle;
+    }else if(!document.hidden&&document.title.startsWith('⚠ 房主请保持游戏页面前台 · ')){
+      document.title=previousTitle;
+    }
+  };
   document.addEventListener('visibilitychange',apply);
 }
 
 function installNetworkDiagnostics(){
+  if(!DEBUG_UI)return;
   const more=document.getElementById('hudMoreMenu');
   if(!more||document.getElementById('networkDiagBtn'))return;
-  const btn=document.createElement('button');btn.type='button';btn.id='networkDiagBtn';btn.textContent='网络状态';
+  const btn=document.createElement('button');btn.type='button';btn.id='networkDiagBtn';btn.textContent='网络诊断';
   btn.onclick=()=>{
     const d=window.__DTAM_NET__||{},c=d.configured||{},b=window.__DTAM_SIGNAL_BUDGET__||{};
-    const current=d.relay?'Cloudflare 中继':d.mode||'unknown';
+    const current=d.relay?'Cloudflare TURN relay':d.mode||'unknown';
     const text=[
       `配置：${c.mode||'unknown'}`,
       `当前：${current}`,
@@ -31,21 +39,29 @@ function installNetworkDiagnostics(){
       c.mode==='server'&&c.serverUrl?`Server：${c.serverUrl}`:'',
       d.lastError?`最近异常：${d.lastError}`:'',
       d.recovering?'状态：房主迁移中':'',
-      Number.isFinite(b.networkRequests)?`本页信令实际请求：${b.networkRequests}`:'',
-      Number.isFinite(b.suppressedPolls)?`已省略空轮询：${b.suppressedPolls}`:'',
-      Number.isFinite(b.currentIntervalMs)?`当前大厅轮询间隔：${(b.currentIntervalMs/1000).toFixed(1)}s`:'',
+      Number.isFinite(b.networkRequests)?`信令实际请求：${b.networkRequests}`:'',
+      Number.isFinite(b.suppressedPolls)?`省略空轮询：${b.suppressedPolls}`:'',
+      Number.isFinite(b.currentIntervalMs)?`轮询间隔：${(b.currentIntervalMs/1000).toFixed(1)}s`:'',
     ].filter(Boolean).join('\n');
-    alert(text)
+    alert(text);
   };
   more.insertBefore(btn,more.lastElementChild);
 }
 
 function installInviteCopy(){
-  const room=document.getElementById('roomIdDisplay');if(!room||document.getElementById('copyInviteBtn'))return;
-  const btn=document.createElement('button');btn.type='button';btn.id='copyInviteBtn';btn.textContent='邀请';btn.title='复制房间号和当前联机方式';
-  btn.style.cssText='font:inherit;border:1px solid currentColor;border-radius:999px;background:transparent;padding:3px 8px;opacity:.8;cursor:pointer';
-  btn.onclick=async()=>{const code=room.textContent?.trim()||'--',cfg=window.__DTAM_NET__?.configured||{};if(!/^\d{2}$/.test(code))return;const url=new URL('https://d1.lunarlab.uk/');url.searchParams.set('transport',cfg.mode||'auto');if(cfg.mode==='server'&&cfg.serverUrl)url.searchParams.set('server',cfg.serverUrl);const text=`Among Us 东滩版 房间 ${code}\n联机：${cfg.mode||'auto'}\n${url.href}`;try{await navigator.clipboard.writeText(text);btn.textContent='已复制';setTimeout(()=>btn.textContent='邀请',1200)}catch(_){prompt('复制邀请信息',text)}};
-  room.insertAdjacentElement('afterend',btn);
+  const room=document.getElementById('roomIdDisplay');
+  const more=document.getElementById('hudMoreMenu');
+  if(!room||!more||document.getElementById('copyInviteBtn'))return;
+  const btn=document.createElement('button');
+  btn.type='button';btn.id='copyInviteBtn';btn.textContent='复制邀请';btn.title='复制房间号和游戏地址';
+  btn.onclick=async()=>{
+    const code=room.textContent?.trim()||'--';
+    if(!/^\d{2}$/.test(code))return;
+    const text=`Among Us 东滩版\n房间 ${code}\nhttps://d1.lunarlab.uk/`;
+    try{await navigator.clipboard.writeText(text);btn.textContent='已复制';setTimeout(()=>btn.textContent='复制邀请',1200)}
+    catch(_){prompt('复制邀请信息',text)}
+  };
+  more.insertBefore(btn,more.lastElementChild);
 }
 
 function isTypingTarget(t){return t instanceof HTMLInputElement||t instanceof HTMLTextAreaElement||t instanceof HTMLSelectElement||t?.isContentEditable}
@@ -72,16 +88,22 @@ function installTaskFailureRecovery(){
   new MutationObserver(fix).observe(toast,{childList:true,subtree:true,characterData:true});
 }
 
-function installSafeAreaAssist(){
-  const style=document.createElement('style');
-  style.textContent=`
-    #hud{padding-left:max(8px,env(safe-area-inset-left));padding-right:max(8px,env(safe-area-inset-right));padding-top:max(6px,env(safe-area-inset-top))}
-    #chatPanel,#playerPanel{max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px)}
-    #chatInputArea{padding-bottom:max(8px,env(safe-area-inset-bottom))}
-    @media(max-width:760px) and (orientation:landscape){#hud{gap:6px}.hud-left,.hud-right{gap:5px}.my-name{max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#p2pTransportStatus{display:none}}
-  `;
-  document.head.appendChild(style);
+function installShellState(){
+  const game=document.getElementById('game');
+  const lobby=document.getElementById('lobbyPanel');
+  if(!game||!lobby)return;
+  const apply=()=>game.classList.toggle('lobby-visible',lobby.classList.contains('show'));
+  apply();
+  new MutationObserver(apply).observe(lobby,{attributes:true,attributeFilter:['class']});
 }
 
-function boot(){installInputSafety();installTaskFailureRecovery();installSafeAreaAssist();installRulePersistence();installHostVisibilityWarning();installNetworkDiagnostics();installInviteCopy()}
+function boot(){
+  installInputSafety();
+  installTaskFailureRecovery();
+  installShellState();
+  installRulePersistence();
+  installHostVisibilityWarning();
+  installNetworkDiagnostics();
+  installInviteCopy();
+}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
