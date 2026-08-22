@@ -18,6 +18,9 @@
 /signal-budget.js
   Cache-Control: public, max-age=300, must-revalidate
 
+/recovery-fanout.js
+  Cache-Control: public, max-age=300, must-revalidate
+
 /hybrid-transport.js
   Cache-Control: public, max-age=300, must-revalidate
 
