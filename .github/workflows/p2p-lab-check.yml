@@ -13,11 +13,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Check browser modules
+      - name: Check hybrid browser modules
         run: |
-          cp p2p-cf-mailbox.js /tmp/p2p-cf-mailbox.mjs
+          cp net-config.js /tmp/net-config.mjs
+          cp hybrid-transport.js /tmp/hybrid-transport.mjs
+          cp game-polish.js /tmp/game-polish.mjs
           cp p2p-game-room-patch.js /tmp/p2p-game-room-patch.mjs
-          cp workers/p2p-signal.js /tmp/p2p-signal.mjs
-          node --check /tmp/p2p-cf-mailbox.mjs
+          cp workers/p2p-signal-v2.js /tmp/p2p-signal-v2.mjs
+          node --check /tmp/net-config.mjs
+          node --check /tmp/hybrid-transport.mjs
+          node --check /tmp/game-polish.mjs
           node --check /tmp/p2p-game-room-patch.mjs
-          node --check /tmp/p2p-signal.mjs
+          node --check /tmp/p2p-signal-v2.mjs
