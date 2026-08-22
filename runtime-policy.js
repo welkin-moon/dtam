@@ -1,6 +1,8 @@
 import { getNetworkConfig } from './net-config.js?v=hybrid-2';
 
 const SIGNAL_HOST = 'p2p-signal.lunarlab.uk';
+const VOICE_HOST = 'voice.lunarlab.uk';
+const OLD_VOICE_HOST = 'rt-d1.lunarlab.uk';
 const NativePC = window.RTCPeerConnection;
 const NativeWS = window.WebSocket;
 const NativeFetch = window.fetch.bind(window);
@@ -16,23 +18,45 @@ function signalAdmission(input, init = {}) {
   try {
     const u = new URL(input instanceof Request ? input.url : String(input), location.href);
     if (u.hostname !== SIGNAL_HOST) return null;
-    if (!/^\/v2\/rooms\/\d{2}\/(claim|join|recover)$/.test(u.pathname)) return null;
-    return u;
+    const m = u.pathname.match(/^\/v2\/rooms\/(\d{2})\/(claim|join|recover)$/);
+    return m ? { url:u, room:m[1], action:m[2] } : null;
   } catch (_) { return null; }
+}
+
+function rewriteVoiceTarget(input) {
+  try {
+    const raw = input instanceof Request ? input.url : String(input);
+    const u = new URL(raw, location.href);
+    if (u.hostname !== OLD_VOICE_HOST || !u.pathname.startsWith('/voice/')) return input;
+    u.protocol = 'https:';
+    u.hostname = VOICE_HOST;
+    u.port = '';
+    updateDiag({ voiceBackend:'cloudflare-edge' });
+    return u.href;
+  } catch (_) { return input; }
 }
 
 window.fetch = async function policyFetch(input, init = {}) {
   const admission = signalAdmission(input, init);
+  let nextInput = rewriteVoiceTarget(input);
   let nextInit = init;
   if (admission) {
     try {
       const body = JSON.parse(String(init.body || '{}'));
       body.relay = getNetworkConfig().mode === 'auto';
+      if ((admission.action === 'claim' || admission.action === 'recover') && body.hostToken) {
+        window.__DTAM_HOST_SIGNAL__ = {
+          room:admission.room,
+          hostToken:String(body.hostToken),
+          action:admission.action,
+          at:Date.now(),
+        };
+      }
       nextInit = { ...init, body:JSON.stringify(body) };
     } catch (_) {}
   }
 
-  const response = await NativeFetch(input, nextInit);
+  const response = await NativeFetch(nextInput, nextInit);
   if (admission && response.ok) {
     try {
       const data = await response.clone().json();
@@ -86,4 +110,4 @@ Object.defineProperties(ServerPolicyWebSocket, {
   CLOSING:{ value:NativeWS.CLOSING }, CLOSED:{ value:NativeWS.CLOSED },
 });
 window.WebSocket = ServerPolicyWebSocket;
-updateDiag({ serverPolicy:'manual-only', turnAvailable:false });
+updateDiag({ serverPolicy:'manual-only', turnAvailable:false, voiceBackend:'cloudflare-edge' });
