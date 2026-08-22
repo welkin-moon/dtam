@@ -1,0 +1,256 @@
+/* Final player-facing layout layer. Keep operational/debug UI out of the play surface. */
+html:not(.dtam-debug) #p2pTransportStatus,
+html:not(.dtam-debug) #networkPanel,
+html:not(.dtam-debug) #networkDiagBtn {
+  display: none !important;
+}
+
+#hud {
+  top: max(8px, env(safe-area-inset-top)) !important;
+  left: max(8px, env(safe-area-inset-left)) !important;
+  right: max(8px, env(safe-area-inset-right)) !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: start !important;
+  gap: 8px !important;
+  pointer-events: none !important;
+}
+.hud-left,
+.hud-right {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+  pointer-events: auto !important;
+}
+.hud-left { justify-self: start !important; }
+.hud-right { justify-self: end !important; }
+.room-tag,
+.my-name { display: none !important; }
+#hud button,
+#connectionStatus,
+#latencyStatus {
+  min-height: 36px !important;
+  height: 36px !important;
+  padding: 0 9px !important;
+  border-radius: 9px !important;
+  white-space: nowrap !important;
+}
+.room-id {
+  margin-left: 0 !important;
+  min-width: 46px !important;
+  border-radius: 9px !important;
+  padding-inline: 8px !important;
+  font-size: 13px !important;
+}
+#playerCountBtn { min-width: 54px !important; }
+#copyInviteBtn { width: 100%; }
+
+#hudMoreWrap { position: relative; }
+#hudMoreMenu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 75;
+  min-width: 150px;
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+#hudMoreMenu[hidden] { display: none !important; }
+#hudMoreMenu button {
+  width: 100% !important;
+  min-height: 38px !important;
+  height: auto !important;
+  justify-content: flex-start !important;
+  padding: 0 10px !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  text-align: left;
+}
+#hudMoreMenu button:hover { background: var(--surface-2) !important; }
+#hudMoreMenu .btn-leave { color: var(--danger) !important; }
+
+#gameMeta {
+  top: calc(max(8px, env(safe-area-inset-top)) + 46px) !important;
+  left: max(10px, env(safe-area-inset-left)) !important;
+  width: min(300px, 46vw) !important;
+  z-index: 14 !important;
+  pointer-events: none !important;
+}
+
+/* actionStack owns interactBtn after game.js moves it into the stack. */
+#actionStack {
+  right: max(14px, env(safe-area-inset-right)) !important;
+  bottom: max(14px, calc(env(safe-area-inset-bottom) + 10px)) !important;
+  z-index: 18 !important;
+  display: grid !important;
+  grid-template-columns: minmax(96px, 112px) !important;
+  gap: 7px !important;
+  max-width: none !important;
+}
+#actionStack button,
+#actionStack #interactBtn {
+  position: static !important;
+  inset: auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 42px !important;
+  height: auto !important;
+  aspect-ratio: auto !important;
+  margin: 0 !important;
+  padding: 7px 10px !important;
+  border-radius: 11px !important;
+  font-size: 12px !important;
+  line-height: 1.15 !important;
+}
+#actionStack button[hidden] { display: none !important; }
+
+#joystick {
+  left: max(16px, env(safe-area-inset-left)) !important;
+  bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px)) !important;
+  width: clamp(96px, 13vw, 122px) !important;
+}
+
+#chatStream {
+  top: calc(max(8px, env(safe-area-inset-top)) + 48px) !important;
+  left: max(10px, env(safe-area-inset-left)) !important;
+  width: min(340px, 42vw) !important;
+}
+
+#chatPanel,
+#playerPanel {
+  top: calc(max(8px, env(safe-area-inset-top)) + 46px) !important;
+  bottom: auto !important;
+  max-height: calc(100dvh - max(8px, env(safe-area-inset-top)) - env(safe-area-inset-bottom) - 62px) !important;
+}
+#chatPanel { right: max(8px, env(safe-area-inset-right)) !important; }
+#playerPanel { left: max(8px, env(safe-area-inset-left)) !important; }
+#chatInputArea { padding-bottom: max(10px, env(safe-area-inset-bottom)) !important; }
+
+/* Lobby is a focused setup screen; gameplay controls should not compete with it. */
+#game.lobby-visible #gameMeta,
+#game.lobby-visible #actionStack,
+#game.lobby-visible #joystick,
+#game.lobby-visible #chatStream {
+  display: none !important;
+}
+#game.lobby-visible #lobbyPanel.show {
+  z-index: 30 !important;
+}
+
+@media (max-width: 900px), (max-height: 600px) and (orientation: landscape) {
+  #hud {
+    top: max(5px, env(safe-area-inset-top)) !important;
+    left: max(6px, env(safe-area-inset-left)) !important;
+    right: max(6px, env(safe-area-inset-right)) !important;
+    gap: 5px !important;
+  }
+  .hud-left, .hud-right { gap: 4px !important; }
+  #hud button,
+  #connectionStatus,
+  #latencyStatus {
+    min-height: 34px !important;
+    height: 34px !important;
+    padding-inline: 7px !important;
+    font-size: 11px !important;
+  }
+  #connectionStatus {
+    width: 32px !important;
+    min-width: 32px !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+  #connectionStatus::before {
+    width: 8px !important;
+    height: 8px !important;
+    margin: 0 !important;
+  }
+  #latencyStatus { display: none !important; }
+  .room-id {
+    min-width: 42px !important;
+    padding-inline: 6px !important;
+    font-size: 12px !important;
+  }
+  #playerCountBtn {
+    min-width: 48px !important;
+    padding-inline: 6px !important;
+  }
+  #mapBtn, #micBtn, #chatToggle, #moreBtn {
+    min-width: 38px !important;
+    padding-inline: 7px !important;
+  }
+  #gameMeta {
+    top: calc(max(5px, env(safe-area-inset-top)) + 42px) !important;
+    width: min(220px, 44vw) !important;
+    padding: 8px 9px !important;
+  }
+  #actionStack {
+    right: max(8px, env(safe-area-inset-right)) !important;
+    bottom: max(8px, env(safe-area-inset-bottom)) !important;
+    grid-template-columns: repeat(2, minmax(74px, 94px)) !important;
+    gap: 5px !important;
+  }
+  #actionStack button,
+  #actionStack #interactBtn {
+    min-height: 38px !important;
+    padding: 5px 7px !important;
+    font-size: 11px !important;
+  }
+  #joystick {
+    width: 98px !important;
+    left: max(10px, env(safe-area-inset-left)) !important;
+    bottom: max(10px, env(safe-area-inset-bottom)) !important;
+  }
+  #chatStream {
+    top: calc(max(5px, env(safe-area-inset-top)) + 42px) !important;
+    width: min(250px, 40vw) !important;
+  }
+  #chatPanel,
+  #playerPanel {
+    top: calc(max(5px, env(safe-area-inset-top)) + 42px) !important;
+    left: max(7px, env(safe-area-inset-left)) !important;
+    right: max(7px, env(safe-area-inset-right)) !important;
+    width: auto !important;
+    max-height: calc(100dvh - max(5px, env(safe-area-inset-top)) - env(safe-area-inset-bottom) - 52px) !important;
+  }
+  #game.lobby-visible #lobbyPanel.show {
+    top: calc(max(5px, env(safe-area-inset-top)) + 42px) !important;
+    bottom: max(7px, env(safe-area-inset-bottom)) !important;
+    left: 50% !important;
+    width: min(520px, calc(100vw - max(14px, env(safe-area-inset-left)) - max(14px, env(safe-area-inset-right)))) !important;
+    max-height: none !important;
+    height: auto !important;
+    padding: 12px !important;
+    overflow: auto !important;
+  }
+}
+
+@media (max-width: 560px) {
+  #hud { grid-template-columns: minmax(0, auto) auto !important; }
+  #mapBtn, #chatToggle, #moreBtn { min-width: 36px !important; padding-inline: 6px !important; }
+  #micBtn { min-width: 40px !important; padding-inline: 6px !important; }
+  #playerCountBtn { min-width: 44px !important; }
+  #gameMeta { width: min(205px, 48vw) !important; }
+}
+
+@media (max-height: 470px) and (orientation: landscape) {
+  #taskText { display: none !important; }
+  #gameMeta { width: min(200px, 38vw) !important; }
+  #actionStack { grid-template-columns: repeat(2, minmax(70px, 88px)) !important; }
+  #actionStack button,
+  #actionStack #interactBtn { min-height: 34px !important; font-size: 10px !important; }
+  #joystick { width: 90px !important; }
+  #gameToast { max-width: 44vw !important; }
+}
