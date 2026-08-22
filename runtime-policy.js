@@ -1,8 +1,9 @@
 import { getNetworkConfig } from './net-config.js?v=hybrid-2';
 
-const SIGNAL = 'https://p2p-signal.lunarlab.uk';
+const SIGNAL_HOST = 'p2p-signal.lunarlab.uk';
 const NativePC = window.RTCPeerConnection;
 const NativeWS = window.WebSocket;
+const NativeFetch = window.fetch.bind(window);
 let turnIceServers = [];
 
 function updateDiag(extra = {}) {
@@ -10,35 +11,58 @@ function updateDiag(extra = {}) {
   Object.assign(d, extra);
 }
 
-async function loadTurn() {
+function signalAdmission(input, init = {}) {
+  if (String(init.method || 'GET').toUpperCase() !== 'POST') return null;
   try {
-    const r = await fetch(`${SIGNAL}/v2/turn`, { cache:'no-store' });
-    if (!r.ok) throw new Error(`TURN ${r.status}`);
-    const data = await r.json();
-    const list = Array.isArray(data.iceServers) ? data.iceServers : [];
-    turnIceServers = list.filter(x => x && (typeof x.urls === 'string' || Array.isArray(x.urls)));
-    updateDiag({ turnAvailable: turnIceServers.length > 0, turnError:'' });
-  } catch (e) {
-    turnIceServers = [];
-    updateDiag({ turnAvailable:false, turnError:String(e?.message || e) });
-  }
+    const u = new URL(input instanceof Request ? input.url : String(input), location.href);
+    if (u.hostname !== SIGNAL_HOST) return null;
+    if (!/^\/v2\/rooms\/\d{2}\/(claim|join|recover)$/.test(u.pathname)) return null;
+    return u;
+  } catch (_) { return null; }
 }
 
+window.fetch = async function policyFetch(input, init = {}) {
+  const admission = signalAdmission(input, init);
+  let nextInit = init;
+  if (admission) {
+    try {
+      const body = JSON.parse(String(init.body || '{}'));
+      body.relay = getNetworkConfig().mode === 'auto';
+      nextInit = { ...init, body:JSON.stringify(body) };
+    } catch (_) {}
+  }
+
+  const response = await NativeFetch(input, nextInit);
+  if (admission && response.ok) {
+    try {
+      const data = await response.clone().json();
+      const list = Array.isArray(data?.iceServers) ? data.iceServers : [];
+      turnIceServers = list.filter(x => x && (typeof x.urls === 'string' || Array.isArray(x.urls)));
+      updateDiag({
+        turnAvailable:turnIceServers.length > 0,
+        turnError:turnIceServers.length ? '' : (getNetworkConfig().mode === 'auto' ? 'TURN credential unavailable; trying direct P2P' : ''),
+      });
+    } catch (_) {}
+  }
+  return response;
+};
+
 if (typeof NativePC === 'function') {
-  await loadTurn();
   class PolicyRTCPeerConnection extends NativePC {
     constructor(config = {}) {
       const existing = Array.isArray(config?.iceServers) ? config.iceServers : [];
       const iceServers = [...existing];
-      for (const server of turnIceServers) {
-        const urls = JSON.stringify(server.urls);
-        if (!iceServers.some(x => JSON.stringify(x?.urls) === urls)) iceServers.push(server);
+      if (getNetworkConfig().mode === 'auto') {
+        for (const server of turnIceServers) {
+          const urls = JSON.stringify(server.urls);
+          if (!iceServers.some(x => JSON.stringify(x?.urls) === urls)) iceServers.push(server);
+        }
       }
       super({ ...config, iceServers });
     }
   }
-  for (const key of ['generateCertificate']) {
-    if (typeof NativePC[key] === 'function') PolicyRTCPeerConnection[key] = NativePC[key].bind(NativePC);
+  if (typeof NativePC.generateCertificate === 'function') {
+    PolicyRTCPeerConnection.generateCertificate = NativePC.generateCertificate.bind(NativePC);
   }
   window.RTCPeerConnection = PolicyRTCPeerConnection;
 }
@@ -46,12 +70,12 @@ if (typeof NativePC === 'function') {
 class ServerPolicyWebSocket extends NativeWS {
   constructor(url, protocols) {
     const cfg = getNetworkConfig();
-    const u = new URL(String(url), location.href);
-    const explicitServer = cfg.mode === 'server';
-    const isDefaultHomeServer = /(^|\.)rt-d1\.lunarlab\.uk$/i.test(u.hostname);
-    if (!explicitServer && isDefaultHomeServer) {
-      updateDiag({ lastError:'当前默认 Server 离线；Auto 不再尝试家庭 Server', serverSkipped:true });
-      throw new DOMException('Auto mode does not use the offline home server', 'NetworkError');
+    if (cfg.mode !== 'server') {
+      updateDiag({
+        lastError:'P2P 建链失败；当前模式不会尝试家庭 Server',
+        serverSkipped:true,
+      });
+      throw new DOMException('Server fallback is disabled outside Server mode', 'NetworkError');
     }
     if (protocols === undefined) super(url); else super(url, protocols);
   }
@@ -62,4 +86,4 @@ Object.defineProperties(ServerPolicyWebSocket, {
   CLOSING:{ value:NativeWS.CLOSING }, CLOSED:{ value:NativeWS.CLOSED },
 });
 window.WebSocket = ServerPolicyWebSocket;
-updateDiag({ serverPolicy:'manual-only' });
+updateDiag({ serverPolicy:'manual-only', turnAvailable:false });
