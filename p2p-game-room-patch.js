@@ -1,5 +1,14 @@
 import { GameRoom } from './worker.js?v=p2p-browser-host-4';
 
+const originalVoiceDirectory = GameRoom.prototype.voiceDirectory;
+GameRoom.prototype.voiceDirectory = function patchedVoiceDirectory(viewer = null) {
+  if (this.phase !== 'meeting') return originalVoiceDirectory.call(this, viewer);
+  const phase = this.phase;
+  this.phase = 'playing';
+  try { return originalVoiceDirectory.call(this, viewer); }
+  finally { this.phase = phase; }
+};
+
 const originalWebSocketMessage = GameRoom.prototype.webSocketMessage;
 GameRoom.prototype.webSocketMessage = async function patchedBrowserHostMessage(ws, message) {
   let packet = null;
@@ -7,10 +16,19 @@ GameRoom.prototype.webSocketMessage = async function patchedBrowserHostMessage(w
     const text = typeof message === 'string' ? message : new TextDecoder().decode(message);
     packet = JSON.parse(text);
   } catch (_) {}
+
   if (packet?.t === 'ping') {
-    try { ws.send(JSON.stringify({ t: 'pong', at: packet.at })); } catch (_) {}
+    try { ws.send(JSON.stringify({ t: 'pong', at: packet.at, serverAt: Date.now() })); } catch (_) {}
     return;
   }
+
+  if (packet?.t === 'chat' && this.phase === 'meeting') {
+    const phase = this.phase;
+    this.phase = 'playing';
+    try { return await originalWebSocketMessage.call(this, ws, message); }
+    finally { this.phase = phase; }
+  }
+
   return originalWebSocketMessage.call(this, ws, message);
 };
 
@@ -31,4 +49,14 @@ GameRoom.prototype.startGame = async function validatedBrowserHostStart(player) 
     return;
   }
   return originalStartGame.call(this, player);
+};
+
+const originalBeginTask = GameRoom.prototype.beginTask;
+GameRoom.prototype.beginTask = async function browserTaskFeedback(player, id, ws) {
+  const before = String(player?.activeTask?.token || '');
+  await originalBeginTask.call(this, player, id, ws);
+  const after = String(player?.activeTask?.token || '');
+  if (this.phase === 'playing' && player?.connected && before === after) {
+    try { ws.send(JSON.stringify({ t:'error', code:'task_unavailable', message:'现在无法开始这个任务，请靠近任务点后重试' })); } catch (_) {}
+  }
 };
