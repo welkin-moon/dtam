@@ -30,8 +30,9 @@ export function normalizeServerUrl(value = DEFAULT_SERVER) {
 export function getNetworkConfig() {
   const query = new URLSearchParams(location.search);
   const qMode = String(query.get('transport') || '').toLowerCase();
+  const debug = debugUiEnabled();
   const savedMode = safeGet(STORAGE_MODE, 'auto');
-  const mode = MODES.has(qMode) ? qMode : (MODES.has(savedMode) ? savedMode : 'auto');
+  const mode = MODES.has(qMode) ? qMode : (debug && MODES.has(savedMode) ? savedMode : 'auto');
   const rawServer = query.get('server') || safeGet(STORAGE_SERVER, DEFAULT_SERVER) || DEFAULT_SERVER;
   let serverUrl = DEFAULT_SERVER;
   let serverError = '';
