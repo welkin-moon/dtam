@@ -114,7 +114,10 @@ function patchSocket(sock) {
     }
 
     let offer = null;
-    const offerPoll = [120,180,260,380,550,750,1000,1300,1700,2200,2600];
+    // A hidden host may only hit D1 every 12s, then still needs time to gather ICE
+    // before it can publish the offer. Keep the guest alive beyond that full window
+    // without increasing the host's steady-state polling rate.
+    const offerPoll = [120,180,260,380,550,750,1000,1400,2200,3500,5200,7000];
     for (const delay of offerPoll) {
       await sleep(delay);
       if (this.closed) return;

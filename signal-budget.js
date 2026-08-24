@@ -73,3 +73,12 @@ window.fetch = async function budgetedFetch(input, init = {}) {
 window.addEventListener('dtam-network-config', () => {
   for (const state of states.values()) state.nextAt = 0;
 });
+
+// If a lobby host returns to the foreground, do not keep the old 12s hidden-tab
+// cooldown. The mailbox's next poll can then hit D1 immediately instead of
+// missing an already-waiting guest for another hidden interval.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  for (const state of states.values()) state.nextAt = 0;
+  stats.currentIntervalMs = FAST_MS;
+});

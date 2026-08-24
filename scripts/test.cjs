@@ -8,6 +8,8 @@ const playerCss=fs.readFileSync('player-shell.css','utf8');
 const headers=fs.readFileSync('_headers','utf8');
 const worker=fs.readFileSync('worker.js','utf8');
 const hybrid=fs.readFileSync('hybrid-transport.js','utf8');
+const p2pResilience=fs.readFileSync('p2p-resilience.js','utf8');
+const signalBudget=fs.readFileSync('signal-budget.js','utf8');
 const v3=fs.readFileSync('v3-resilience.js','utf8');
 const edge=fs.readFileSync('edge/src/main.rs','utf8');
 const server=fs.readFileSync('server/src/main.rs','utf8');
@@ -77,6 +79,12 @@ excludes(playerCss,'#latencyStatus { display: none','latency must stay visible o
 
 includes(hybrid,"const FAST_OUT=new Set(['pos','ping'])",'P2P position and RTT probes must use the fast channel');
 includes(hybrid,"FAST_IN=new Set(['pos','pong'])",'P2P position and RTT replies must use the fast channel');
+includes(signalBudget,"document.addEventListener('visibilitychange'",'foregrounding a lobby host must clear hidden-tab signal cooldown');
+const hiddenJoinPollMs=Number(signalBudget.match(/const HIDDEN_MS = (\d+);/)?.[1]||0);
+const hostIceGatherMs=Number(hybrid.match(/ICE_GATHER=(\d+)/)?.[1]||0);
+const offerPollText=p2pResilience.match(/const offerPoll = \[([^\]]+)\]/)?.[1]||'';
+const offerWaitMs=offerPollText.split(',').map(Number).filter(Number.isFinite).reduce((a,b)=>a+b,0);
+assert(hiddenJoinPollMs>0&&hostIceGatherMs>0&&offerWaitMs>=hiddenJoinPollMs+hostIceGatherMs+2500,'guest offer window must outlive hidden host polling plus ICE gathering');
 includes(hybrid,"await import('./v3-bootstrap.js?v=20260824-direct-m3e1')",'Server mode must load the v3 direct transport');
 includes(v3,'No Tunnel fallback is permitted after gameplay begins','Server gameplay must not silently fall back to Tunnel');
 includes(v3,"type === 'leave' && signalAvailable(this)",'only explicit leave may use signaling during a match');
