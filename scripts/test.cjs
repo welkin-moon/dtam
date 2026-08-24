@@ -54,7 +54,9 @@ includes(src,'Number(st.guardianAngels||0)','guardian angels must count as speci
 includes(src,'voiceErrorMessage','voice errors must be classified');
 includes(src,"const HEARTBEAT_INTERVAL = 3000",'RTT sampling interval must be 3 seconds');
 includes(src,"const CONNECT_TIMEOUT_MS = 20000",'slow Cloudflare routes must get a 20 second websocket handshake budget');
+includes(src,"ws.onclose=e=>{",'websocket close handler must receive the CloseEvent before reading its reason');
 includes(src,"String(e?.reason||'').trim()||'无法建立实时连接'",'connection errors must preserve transport-specific close reasons');
+excludes(src,"ws.onclose=()=>{if(generation!==socketGeneration)return;stopHeartbeat();if(connectReject)",'close handler must not drop the event argument');
 excludes(src,"r(new Error('无法连接到实时服务器'))",'P2P failures must not be mislabeled as realtime server failures');
 includes(src,"function renderLatency()",'frontend must display realtime RTT');
 includes(src,"function recordLatency(sample)",'frontend must smooth RTT and jitter');
