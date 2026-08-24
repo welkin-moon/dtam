@@ -1,6 +1,8 @@
 import { GameRoom } from './worker.js?v=p2p-browser-host-4';
 
 const VOICE_SYNC = 'https://voice.lunarlab.uk/v1/sync';
+const VOICE_SYNC_DEBOUNCE_MS = 120;
+const VOICE_SYNC_RETRY_MS = [1000, 2000, 4000, 8000, 15000, 30000];
 const voiceSyncState = new WeakMap();
 
 function voiceSignature(room) {
@@ -22,18 +24,23 @@ function scheduleVoiceSync(room) {
   const signature = voiceSignature(room);
   let state = voiceSyncState.get(room);
   if (!state) {
-    state = { signature:'', timer:null, inFlight:false, pending:false };
+    state = { signature:'', timer:null, inFlight:false, pending:false, retryAttempt:0, retryAt:0 };
     voiceSyncState.set(room, state);
   }
   if (state.signature === signature && !state.pending) return;
   state.pending = true;
-  clearTimeout(state.timer);
+  if (state.inFlight || state.timer) return;
+  const t = Date.now();
+  const delay = state.retryAt > t ? Math.max(VOICE_SYNC_DEBOUNCE_MS, state.retryAt - t) : VOICE_SYNC_DEBOUNCE_MS;
   state.timer = setTimeout(async () => {
+    state.timer = null;
     if (state.inFlight) return;
     state.inFlight = true;
     state.pending = false;
     const current = voiceSignature(room);
     try {
+      const liveHost = window.__DTAM_HOST_SIGNAL__;
+      if (!liveHost?.room || !liveHost?.hostToken || liveHost.room.length !== 2) return;
       const players = Object.values(room?.players || {}).map(p => ({
         playerId:String(p.id || ''), gameToken:String(p.token || ''), alive:p.alive !== false,
         connected:p.connected !== false, sessionId:String(p.voiceSessionId || ''),
@@ -41,16 +48,25 @@ function scheduleVoiceSync(room) {
       }));
       const r = await fetch(VOICE_SYNC, {
         method:'POST', cache:'no-store', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ room:host.room, hostToken:host.hostToken, phase:String(room?.phase || 'lobby'), players }),
+        body:JSON.stringify({ room:liveHost.room, hostToken:liveHost.hostToken, phase:String(room?.phase || 'lobby'), players }),
       });
-      if (r.ok) state.signature = current;
+      if (!r.ok) throw new Error(`voice sync ${r.status}`);
+      state.signature = current;
+      state.retryAttempt = 0;
+      state.retryAt = 0;
     } catch (_) {
       state.pending = true;
+      const base = VOICE_SYNC_RETRY_MS[Math.min(state.retryAttempt, VOICE_SYNC_RETRY_MS.length - 1)];
+      const hidden = typeof document !== 'undefined' && document.hidden;
+      const slowed = hidden ? Math.min(60000, Math.max(5000, base * 2)) : base;
+      const jitter = Math.round(slowed * (0.8 + Math.random() * 0.4));
+      state.retryAttempt = Math.min(state.retryAttempt + 1, VOICE_SYNC_RETRY_MS.length - 1);
+      state.retryAt = Date.now() + jitter;
     } finally {
       state.inFlight = false;
       if (state.pending || voiceSignature(room) !== state.signature) scheduleVoiceSync(room);
     }
-  }, 120);
+  }, delay);
 }
 
 const originalPersistNow = GameRoom.prototype.persistNow;
