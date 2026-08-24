@@ -1,6 +1,8 @@
 import { GameRoom } from './worker.js?v=20260824-direct-m3e1';
 
 const VOICE_SYNC = 'https://voice.lunarlab.uk/v1/sync';
+const VOICE_SYNC_DEBOUNCE_MS = 120;
+const VOICE_SYNC_RETRY_MS = [1000, 2000, 4000, 8000, 15000, 30000];
 const voiceSyncState = new WeakMap();
 
 function voiceSignature(room) {
@@ -22,13 +24,18 @@ function scheduleVoiceSync(room) {
   const signature = voiceSignature(room);
   let state = voiceSyncState.get(room);
   if (!state) {
-    state = { signature:'', timer:null, inFlight:false, pending:false };
+    state = { signature:'', timer:null, inFlight:false, pending:false, retryAttempt:0, retryAt:0 };
     voiceSyncState.set(room, state);
   }
   if (state.signature === signature && !state.pending) return;
   state.pending = true;
-  clearTimeout(state.timer);
+  // Calls while a request is in flight are coalesced; the finally block will
+  // schedule the newest state. This avoids a 120 ms retry loop on slow edges.
+  if (state.inFlight || state.timer) return;
+  const now = Date.now();
+  const delay = state.retryAt > now ? Math.max(VOICE_SYNC_DEBOUNCE_MS, state.retryAt - now) : VOICE_SYNC_DEBOUNCE_MS;
   state.timer = setTimeout(async () => {
+    state.timer = null;
     if (state.inFlight) return;
     state.inFlight = true;
     state.pending = false;
@@ -43,14 +50,21 @@ function scheduleVoiceSync(room) {
         method:'POST', cache:'no-store', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ room:host.room, hostToken:host.hostToken, phase:String(room?.phase || 'lobby'), players }),
       });
-      if (r.ok) state.signature = current;
+      if (!r.ok) throw new Error(`voice sync ${r.status}`);
+      state.signature = current;
+      state.retryAttempt = 0;
+      state.retryAt = 0;
     } catch (_) {
       state.pending = true;
+      const base = VOICE_SYNC_RETRY_MS[Math.min(state.retryAttempt, VOICE_SYNC_RETRY_MS.length - 1)];
+      const jitter = Math.round(base * (0.8 + Math.random() * 0.4));
+      state.retryAttempt = Math.min(state.retryAttempt + 1, VOICE_SYNC_RETRY_MS.length - 1);
+      state.retryAt = Date.now() + jitter;
     } finally {
       state.inFlight = false;
       if (state.pending || voiceSignature(room) !== state.signature) scheduleVoiceSync(room);
     }
-  }, 120);
+  }, delay);
 }
 
 const originalPersistNow = GameRoom.prototype.persistNow;

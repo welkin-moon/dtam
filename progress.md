@@ -2,7 +2,7 @@
 
 更新时间：2026-08-24
 当前分支：`p2p-browser-host-lab`
-状态：核心修复已写入并通过本地静态/编译检查，尚未部署生产环境，也尚未完成双玩家浏览器实测。
+状态：核心修复已通过本地静态/编译检查；实验分支 Preview 已完成双浏览器 Auto/Cloudflare TURN 创建、加入和开局实测。尚未部署生产环境，移动/会议/返回大厅、Server 直连与断链恢复仍待完成。
 
 ## 当前目标
 
@@ -59,22 +59,38 @@
 - 用可访问的连接诊断 Dialog/Sheet 取代原来的 alert 式信息展示，并补充焦点循环、内容转义和安全复制回退。
 - 高级网络模式和 Server URL 仍只在 `debug=1` 下显示，普通玩家继续使用简化界面。
 
+### 6. 信令额度与失败诊断
+
+- 修复后台房主 join 检查 12 秒、但加入端等待 offer 窗口更短的竞态；加入端现在覆盖“后台轮询 + ICE 收集 + 余量”，房主重新回前台时会立即解除旧的后台信令冷却。
+- P2P 语音房间状态 `/v1/sync` 失败后改为 `1s → 2s → 4s → 8s → 15s → 30s` 退避并加入 ±20% 抖动；退避期间新的 `persistNow()` 只合并状态，不会把请求重新拉回 120ms。
+- 持续 503 + 每 50ms 触发同步的本地压力测试中，请求实际发生在约 133ms、1.027s、3.016s，验证故障时不会刷 Worker/D1。
+- 加入端会统计本地/远端 SDP 的 ICE candidate 数；若纯 P2P 模式出现 0 candidate，会明确提示 WebRTC 防泄漏/禁止非代理 UDP 并建议切换 Auto，不再误报“实时服务器”故障。
+
 ## 本地验证结果
 
 以下检查在 2026-08-24 当前工作树通过：
 
 - `node --check`：`game.js`、`game-polish.js`、`hybrid-transport.js`、`v3-bootstrap.js`、`v3-resilience.js`、`worker.js`、`workers/p2p-signal-v2.js`。
-- `node scripts/test.cjs`：通过地图缩放、连通性、权威同步、移动序号、缓存策略、延迟显示和 Server 直连静态断言。
+- `node scripts/test.cjs`：通过地图缩放、连通性、权威同步、移动序号、缓存策略、延迟显示、隐藏房主 join 时间窗、0 ICE candidate 诊断、语音同步退避和 Server 直连静态断言。
 - `cargo fmt --check`：Server 与 Edge 均通过。
 - `cargo test --manifest-path server/Cargo.toml`：编译通过；当前 Rust 测试数为 0。
 - `cargo test --manifest-path edge/Cargo.toml`：编译通过；当前 Rust 测试数为 0。
 - `index.html` 重复 ID 检查：通过。
 - `git diff --check`：通过。
 
+## 双浏览器实测（2026-08-24）
+
+- Preview：`p2p-browser-host-lab.dtam.pages.dev`；两个独立 browser-control session，同一台 Edge Beta 152。
+- 浏览器安装的 `WebRTC Network Limiter` 当前策略为 `webrtc.ip_handling_policy=disable_non_proxied_udp`。独立 WebRTC 探针与纯 P2P 房间均确认 ICE gathering 会完成但产生 0 candidate；D1 房间 55 的 offer/answer 均为 517 字节且没有 `a=candidate:`，因此该环境无法使用“仅 P2P”直连，这是浏览器隐私策略限制而非 TURN/D1 信令失败。
+- Signal Worker `/health` 返回 v2.2、`turnConfigured=true`。
+- Auto 房间 20 在“房主后台标签页 + 加入端前台”条件下成功创建、加入并开局；D1 中 offer/answer 均包含 `typ relay`，不含 host/srflx candidate，确认实际使用 Cloudflare TURN WebRTC，而不是 Server/Tunnel 回退。
+- Guest UI 显示 `Cloudflare 中继`（本次约 608–667 ms），Host 显示 `P2P 房主 · 1 直连`；两端均进入 `playing`，分别正确获得船员/内鬼状态。
+- 尚未把本次双端验证扩展到移动、会议、返回大厅和主动断 DataChannel；这些仍按下方 TODO 继续。
+
 ## 尚未完成 / 不能视为已上线
 
 - [ ] 在 375×667、844×390、平板和 1440×900 上完成最终视觉截图验收。
-- [ ] 使用两个独立浏览器上下文完成 Auto/P2P 房间创建、加入、开局、移动、会议、返回大厅测试。
+- [ ] 使用两个独立浏览器上下文完成 Auto/P2P 房间创建、加入、开局、移动、会议、返回大厅测试。（Auto 的创建/加入/开局已通过；纯 P2P 在当前 Edge 隐私策略下为预期的 0-candidate 不可用，仍需在允许 UDP/本地候选的环境复测；移动/会议/返回大厅待测。）
 - [ ] 使用两个独立浏览器上下文完成 Server 模式测试，并确认双方 `directReady=true` 后才能开始。
 - [ ] 对局中主动断开 DataChannel，确认游戏冻结、Tunnel 游戏包被丢弃、直连恢复后由权威状态校正。
 - [ ] 验证两个玩家开局、重置和重连后的自身/对方坐标完全一致。

@@ -15,6 +15,13 @@ function badge(text, title = text) {
   if (el) { el.textContent = text; el.title = title; }
 }
 function diag(extra) { Object.assign(window.__DTAM_NET__ || (window.__DTAM_NET__ = {}), extra); }
+function iceCandidateCount(desc) { return (String(desc?.sdp || '').match(/(?:^|\r?\n)a=candidate:/g) || []).length; }
+function noCandidateReason(side = 'local') {
+  const who = side === 'remote' ? '房主浏览器' : '当前浏览器';
+  return getNetworkConfig().mode === 'p2p'
+    ? `${who}未提供 WebRTC ICE 候选；可能启用了 WebRTC 防泄漏或禁止非代理 UDP，请切换到 Auto`
+    : `${who}未能获取 WebRTC/TURN ICE 候选，请检查网络后重试`;
+}
 
 async function signal(path, options = {}) {
   const r = await fetch(SIGNAL + path, { cache:'no-store', ...options, headers:{ 'Content-Type':'application/json', ...(options.headers || {}) } });
@@ -129,6 +136,9 @@ function patchSocket(sock) {
       }
     }
     if (!offer) return this.fallback('等待房主响应超时');
+    const remoteIceCandidates = iceCandidateCount(offer);
+    diag({ remoteIceCandidates });
+    if (!remoteIceCandidates) return this.fallback(noCandidateReason('remote'));
 
     const pc = this.pc = new RTCPeerConnection({
       iceServers:[{ urls:'stun:stun.cloudflare.com:3478' }],
@@ -150,9 +160,13 @@ function patchSocket(sock) {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       await waitIceFast(pc, 2400);
+      const localDescription = pc.localDescription;
+      const localIceCandidates = iceCandidateCount(localDescription);
+      diag({ localIceCandidates });
+      if (!localIceCandidates) return this.fallback(noCandidateReason('local'));
       await signal(`/v2/rooms/${this.room}/answers/${peerId}`, {
         method:'POST',
-        body:JSON.stringify({ joinToken, answer:pc.localDescription }),
+        body:JSON.stringify({ joinToken, answer:localDescription }),
       });
     } catch (_) {
       return this.fallback('提交连接信息失败');
