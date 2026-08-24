@@ -22,7 +22,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -43,7 +43,7 @@ use webrtc::{
     },
 };
 
-const VERSION: &str = "3.0.0";
+const VERSION: &str = "3.0.1";
 const MAX_EDGE_SESSIONS: usize = 64;
 const MAX_SIGNAL_MESSAGE_BYTES: usize = 128 * 1024;
 const MAX_APP_MESSAGE_BYTES: usize = 16 * 1024;
@@ -197,6 +197,16 @@ impl PeerConnectionEventHandler for EdgePeerHandler {
                             locked.direct_ready()
                         };
                         if direct {
+                            let _ = core_tx
+                                .send(
+                                    json!({
+                                        "t":"transport_ready",
+                                        "direct":true,
+                                        "generation":generation
+                                    })
+                                    .to_string(),
+                                )
+                                .await;
                             let _ = signal_tx
                                 .try_send(json!({"__v3":"transport","mode":"direct"}).to_string());
                         }
@@ -209,6 +219,9 @@ impl PeerConnectionEventHandler for EdgePeerHandler {
                             continue;
                         }
                         let text = String::from_utf8_lossy(&message.data).into_owned();
+                        if is_reserved_transport_message(&text) {
+                            continue;
+                        }
                         if label == "dtam-fast" {
                             if core_tx.try_send(text).is_err() && core_tx.is_closed() {
                                 break;
@@ -226,6 +239,16 @@ impl PeerConnectionEventHandler for EdgePeerHandler {
                                 locked.fast = None;
                             }
                             drop(locked);
+                            let _ = core_tx
+                                .send(
+                                    json!({
+                                        "t":"transport_ready",
+                                        "direct":false,
+                                        "generation":generation
+                                    })
+                                    .to_string(),
+                                )
+                                .await;
                             let _ = signal_tx.try_send(
                                 json!({
                                     "__v3":"transport",
@@ -412,6 +435,7 @@ async fn run_edge_session(
     let (rtc_result_tx, mut rtc_result_rx) = mpsc::channel::<RtcNegotiationResult>(2);
     let channels = Arc::new(RwLock::new(RtcChannels::default()));
     let rtc_generation = Arc::new(AtomicUsize::new(0));
+    let game_active = Arc::new(AtomicBool::new(false));
 
     let signal_writer = tokio::spawn(async move {
         while let Some(text) = signal_rx.recv().await {
@@ -468,6 +492,7 @@ async fn run_edge_session(
 
     let core_reader_channels = Arc::clone(&channels);
     let core_reader_signal = signal_tx.clone();
+    let core_reader_game_active = Arc::clone(&game_active);
     let core_reader_done = done_tx.clone();
     let core_reader = tokio::spawn(async move {
         while let Some(message) = core_stream.next().await {
@@ -475,12 +500,24 @@ async fn run_edge_session(
             match message {
                 TungsteniteMessage::Text(text) => {
                     let text = text.to_string();
-                    send_app_to_browser(text, &core_reader_channels, &core_reader_signal).await;
+                    send_app_to_browser(
+                        text,
+                        &core_reader_channels,
+                        &core_reader_signal,
+                        &core_reader_game_active,
+                    )
+                    .await;
                 }
                 TungsteniteMessage::Binary(bytes) => {
                     if bytes.len() <= MAX_APP_MESSAGE_BYTES {
                         let text = String::from_utf8_lossy(&bytes).into_owned();
-                        send_app_to_browser(text, &core_reader_channels, &core_reader_signal).await;
+                        send_app_to_browser(
+                            text,
+                            &core_reader_channels,
+                            &core_reader_signal,
+                            &core_reader_game_active,
+                        )
+                        .await;
                     }
                 }
                 TungsteniteMessage::Close(_) => break,
@@ -570,6 +607,16 @@ async fn run_edge_session(
                                     rtc_offer_times.push_back(now);
 
                                     let generation = rtc_generation.fetch_add(1, Ordering::AcqRel) + 1;
+                                    let _ = core_tx
+                                        .send(
+                                            json!({
+                                                "t":"transport_ready",
+                                                "direct":false,
+                                                "generation":generation
+                                            })
+                                            .to_string(),
+                                        )
+                                        .await;
                                     if let Some(task) = rtc_task.take() {
                                         task.abort();
                                     }
@@ -603,13 +650,31 @@ async fn run_edge_session(
                                 }
                                 _ => {}
                             }
-                        } else if text.len() <= MAX_APP_MESSAGE_BYTES && core_tx.send(text).await.is_err() {
-                            break;
+                        } else if text.len() <= MAX_APP_MESSAGE_BYTES {
+                            if is_reserved_transport_message(&text) {
+                                continue;
+                            }
+                            if game_active.load(Ordering::Acquire)
+                                && !tunnel_client_message_allowed(&text)
+                            {
+                                continue;
+                            }
+                            if core_tx.send(text).await.is_err() {
+                                break;
+                            }
                         }
                     }
                     AxumMessage::Binary(bytes) => {
                         if bytes.len() <= MAX_APP_MESSAGE_BYTES {
                             let text = String::from_utf8_lossy(&bytes).into_owned();
+                            if is_reserved_transport_message(&text) {
+                                continue;
+                            }
+                            if game_active.load(Ordering::Acquire)
+                                && !tunnel_client_message_allowed(&text)
+                            {
+                                continue;
+                            }
                             if core_tx.send(text).await.is_err() {
                                 break;
                             }
@@ -663,6 +728,51 @@ fn parse_control(text: &str) -> Option<ControlMessage> {
     Some(ControlMessage { kind, value })
 }
 
+fn app_message_type(text: &str) -> Option<String> {
+    serde_json::from_str::<Value>(text)
+        .ok()?
+        .get("t")?
+        .as_str()
+        .map(str::to_owned)
+}
+
+fn is_reserved_transport_message(text: &str) -> bool {
+    app_message_type(text).as_deref() == Some("transport_ready")
+}
+
+fn tunnel_client_message_allowed(text: &str) -> bool {
+    matches!(app_message_type(text).as_deref(), Some("leave"))
+}
+
+fn tunnel_server_message_allowed(text: &str) -> bool {
+    matches!(
+        app_message_type(text).as_deref(),
+        Some("welcome" | "error" | "game_over" | "lobby_reset")
+    )
+}
+
+fn update_game_active(text: &str, active: &AtomicBool) {
+    let Ok(value) = serde_json::from_str::<Value>(text) else {
+        return;
+    };
+    let Some(kind) = value.get("t").and_then(Value::as_str) else {
+        return;
+    };
+    let next = match kind {
+        "game_start" => Some(true),
+        "game_over" | "lobby_reset" => Some(false),
+        "welcome" | "state" => value
+            .get("game")
+            .and_then(|game| game.get("phase"))
+            .and_then(Value::as_str)
+            .map(|phase| matches!(phase, "playing" | "meeting")),
+        _ => None,
+    };
+    if let Some(next) = next {
+        active.store(next, Ordering::Release);
+    }
+}
+
 fn is_fast_server_message(text: &str) -> bool {
     serde_json::from_str::<Value>(text)
         .ok()
@@ -674,7 +784,10 @@ async fn send_app_to_browser(
     text: String,
     channels: &Arc<RwLock<RtcChannels>>,
     signal_tx: &mpsc::Sender<String>,
+    game_active: &AtomicBool,
 ) {
+    update_game_active(&text, game_active);
+    let direct_required = game_active.load(Ordering::Acquire);
     let fast = is_fast_server_message(&text);
     let channel = {
         let locked = channels.read().await;
@@ -697,6 +810,10 @@ async fn send_app_to_browser(
         if channel.send(BytesMut::from(text.as_bytes())).await.is_ok() {
             return;
         }
+    }
+
+    if direct_required && !tunnel_server_message_allowed(&text) {
+        return;
     }
 
     if fast {

@@ -32,6 +32,7 @@ use uuid::Uuid;
 const MAX_PLAYERS: usize = 15;
 const MIN_PLAYERS: usize = 2;
 const MAP_SIZE: i32 = 150;
+const MAP_PROTOCOL_ID: &str = "dtam-map-150-v1";
 const PLAYER_RADIUS: f64 = 0.32;
 const RECONNECT_GRACE_MS: i64 = 180_000;
 const SHAPESHIFT_DURATION_MS: i64 = 12_000;
@@ -340,6 +341,12 @@ struct Player {
     animal: String,
     avatar: String,
     pos: Pos,
+    #[serde(default)]
+    move_seq: u64,
+    #[serde(skip)]
+    direct_ready: bool,
+    #[serde(skip)]
+    transport_generation: u64,
     connected: bool,
     connection_id: String,
     joined_at: i64,
@@ -909,7 +916,7 @@ fn normalize_settings(raw: &Value, base: &Settings) -> Settings {
 }
 
 fn public_players(room: &Room) -> Vec<Value> {
-    room.players.values().map(|p|json!({"id":p.id,"name":p.name,"color":p.color,"pos":p.pos,"isHost":p.id==room.host_id,"connected":p.connected,"alive":p.alive,"inVent":p.in_vent,"animal":p.animal,"disguiseTargetId":p.disguise_target_id,"abilityUntil":p.ability_until,"hiddenUntil":p.hidden_until,"protectedUntil":p.protected_until})).collect()
+    room.players.values().map(|p|json!({"id":p.id,"name":p.name,"color":p.color,"pos":p.pos,"moveSeq":p.move_seq,"directReady":p.direct_ready,"isHost":p.id==room.host_id,"connected":p.connected,"alive":p.alive,"inVent":p.in_vent,"animal":p.animal,"disguiseTargetId":p.disguise_target_id,"abilityUntil":p.ability_until,"hiddenUntil":p.hidden_until,"protectedUntil":p.protected_until})).collect()
 }
 fn profiles(room: &Room) -> Vec<Value> {
     room.players
@@ -1162,6 +1169,28 @@ fn start_game(rt: &mut RoomRuntime, player_id: &str) {
         rt.send_to(player_id,json!({"t":"error","code":"not_enough_players","message":format!("至少需要 {} 名玩家",MIN_PLAYERS)}));
         return;
     }
+    let waiting_for_direct = active_ids
+        .iter()
+        .filter(|id| {
+            rt.room
+                .players
+                .get(*id)
+                .map(|p| !p.direct_ready)
+                .unwrap_or(true)
+        })
+        .count();
+    if waiting_for_direct > 0 {
+        rt.send_to(
+            player_id,
+            json!({
+                "t":"error",
+                "code":"direct_not_ready",
+                "message":format!("仍有 {} 名玩家未完成 Server 直连", waiting_for_direct),
+                "close":false
+            }),
+        );
+        return;
+    }
     let now = now_ms();
     let mut rng = rand::thread_rng();
     let mut order = active_ids.clone();
@@ -1287,6 +1316,7 @@ fn start_game(rt: &mut RoomRuntime, player_id: &str) {
             p.poison_ends_at = 0;
             p.emergency_used = 0;
             p.pos = spawn(i);
+            p.move_seq = p.move_seq.saturating_add(1);
             p.last_move_at = now;
             p.in_vent = false;
             p.vent_id.clear();
@@ -1964,6 +1994,7 @@ fn resume_after_meeting(rt: &mut RoomRuntime) {
     for (i, id) in ids.iter().enumerate() {
         if let Some(p) = rt.room.players.get_mut(id) {
             p.pos = spawn(i);
+            p.move_seq = p.move_seq.saturating_add(1);
             p.last_move_at = now;
             p.in_vent = false;
             p.vent_id.clear();
@@ -2115,6 +2146,7 @@ fn handle_vent(rt: &mut RoomRuntime, player_id: &str, action: &str, vent_id: &st
                 p.in_vent = true;
                 p.vent_id = v.id.into();
                 p.pos = Pos { x: v.x, y: v.y };
+                p.move_seq = p.move_seq.saturating_add(1);
                 p.last_move_at = now;
                 if engineer {
                     p.vent_exit_at = now + ENGINEER_VENT_MAX_MS;
@@ -2137,6 +2169,7 @@ fn handle_vent(rt: &mut RoomRuntime, player_id: &str, action: &str, vent_id: &st
             if let Some(p) = rt.room.players.get_mut(player_id) {
                 p.vent_id = to.id.into();
                 p.pos = Pos { x: to.x, y: to.y };
+                p.move_seq = p.move_seq.saturating_add(1);
                 p.last_move_at = now;
             }
         }
@@ -2151,6 +2184,7 @@ fn handle_vent(rt: &mut RoomRuntime, player_id: &str, action: &str, vent_id: &st
                 p.in_vent = false;
                 p.vent_id.clear();
                 p.pos = Pos { x: v.x, y: v.y };
+                p.move_seq = p.move_seq.saturating_add(1);
                 p.last_move_at = now;
                 if engineer {
                     p.vent_exit_at = 0;
@@ -2161,9 +2195,9 @@ fn handle_vent(rt: &mut RoomRuntime, player_id: &str, action: &str, vent_id: &st
         _ => return,
     }
     if let Some(p) = rt.room.players.get(player_id) {
-        rt.send_to(player_id,json!({"t":"vent_state","id":p.id,"x":p.pos.x,"y":p.pos.y,"inVent":p.in_vent,"ventId":p.vent_id,"ventReadyAt":p.vent_ready_at,"ventExitAt":p.vent_exit_at}));
+        rt.send_to(player_id,json!({"t":"vent_state","id":p.id,"x":p.pos.x,"y":p.pos.y,"moveSeq":p.move_seq,"inVent":p.in_vent,"ventId":p.vent_id,"ventReadyAt":p.vent_ready_at,"ventExitAt":p.vent_exit_at}));
         rt.broadcast(
-            json!({"t":"vent_state","id":p.id,"x":p.pos.x,"y":p.pos.y,"inVent":p.in_vent}),
+            json!({"t":"vent_state","id":p.id,"x":p.pos.x,"y":p.pos.y,"moveSeq":p.move_seq,"inVent":p.in_vent}),
             Some(player_id),
         );
     }
@@ -2211,6 +2245,7 @@ fn reset_lobby(rt: &mut RoomRuntime, player_id: &str) {
             p.vent_id.clear();
             p.active_task = None;
             p.pos = spawn(i);
+            p.move_seq = p.move_seq.saturating_add(1);
             p.last_move_at = now_ms();
         }
     }
@@ -2246,10 +2281,40 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
     let Some(t) = msg.get("t").and_then(Value::as_str) else {
         return true;
     };
+    if t == "transport_ready" {
+        let direct = msg.get("direct").and_then(Value::as_bool).unwrap_or(false);
+        let generation = msg.get("generation").and_then(Value::as_u64).unwrap_or(0);
+        let mut changed = false;
+        if let Some(p) = rt.room.players.get_mut(player_id) {
+            if generation >= p.transport_generation {
+                changed = p.direct_ready != direct || p.transport_generation != generation;
+                p.direct_ready = direct;
+                p.transport_generation = generation;
+            }
+        }
+        if changed {
+            rt.broadcast_state();
+        }
+        return true;
+    }
+    let direct_required = matches!(rt.room.phase.as_str(), "playing" | "meeting")
+        && rt
+            .room
+            .players
+            .get(player_id)
+            .map(|p| !p.direct_ready)
+            .unwrap_or(true);
+    if direct_required && !matches!(t, "leave" | "voice_state") {
+        return true;
+    }
     match t {
         "ping" => {
             let echo = msg.get("at").cloned().unwrap_or(Value::Null);
-            rt.send_to(player_id, json!({"t":"pong","at":echo,"serverAt":now_ms()}));
+            let seq = msg.get("seq").cloned().unwrap_or(Value::Null);
+            rt.send_to(
+                player_id,
+                json!({"t":"pong","at":echo,"seq":seq,"serverAt":now_ms()}),
+            );
         }
         "chat" => {
             let text = sanitize_text(msg.get("text").and_then(Value::as_str).unwrap_or(""));
@@ -2321,9 +2386,16 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
             if let Some(p) = rt.room.players.get_mut(player_id) {
                 p.pos = Pos { x, y };
                 p.last_move_at = now;
+                p.move_seq = p.move_seq.saturating_add(1);
             }
+            let move_seq = rt
+                .room
+                .players
+                .get(player_id)
+                .map(|p| p.move_seq)
+                .unwrap_or(0);
             rt.broadcast(
-                json!({"t":"pos","id":player_id,"x":x,"y":y,"alive":p0.alive,"inVent":false}),
+                json!({"t":"pos","id":player_id,"x":x,"y":y,"moveSeq":move_seq,"alive":p0.alive,"inVent":false}),
                 Some(player_id),
             );
             rt.mark_dirty();
@@ -2532,11 +2604,12 @@ fn tick_room(rt: &mut RoomRuntime) {
             if let Some(v) = v {
                 p.pos = Pos { x: v.x, y: v.y };
             }
+            p.move_seq = p.move_seq.saturating_add(1);
         }
         if let Some(p) = rt.room.players.get(&id) {
-            rt.send_to(&id,json!({"t":"vent_state","id":id,"x":p.pos.x,"y":p.pos.y,"inVent":false,"ventId":"","ventReadyAt":p.vent_ready_at}));
+            rt.send_to(&id,json!({"t":"vent_state","id":id,"x":p.pos.x,"y":p.pos.y,"moveSeq":p.move_seq,"inVent":false,"ventId":"","ventReadyAt":p.vent_ready_at}));
             rt.broadcast(
-                json!({"t":"vent_state","id":id,"x":p.pos.x,"y":p.pos.y,"inVent":false}),
+                json!({"t":"vent_state","id":id,"x":p.pos.x,"y":p.pos.y,"moveSeq":p.move_seq,"inVent":false}),
                 Some(&id),
             );
         }
@@ -2688,6 +2761,8 @@ struct WsQuery {
     token: String,
     #[serde(default, rename = "v")]
     _v: String,
+    #[serde(default, rename = "map")]
+    map_id: String,
 }
 fn origin_allowed(headers: &HeaderMap, allowed_origin: &str) -> bool {
     headers
@@ -2757,6 +2832,16 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
         return;
     }
     let _connection_guard = WsConnGuard(state.active_ws.clone());
+    if q.map_id != MAP_PROTOCOL_ID {
+        let _ = socket
+            .send(Message::Text(
+                json!({"t":"error","code":"version_mismatch","message":"客户端版本已过期，请刷新页面"})
+                    .to_string(),
+            ))
+            .await;
+        let _ = socket.close().await;
+        return;
+    }
     let ip_active = {
         let mut counts = state
             .ip_connections
@@ -2869,6 +2954,9 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
                 animal: next_animal(&rt.room),
                 avatar: String::new(),
                 pos: spawn(rt.room.players.len()),
+                move_seq: 0,
+                direct_ready: false,
+                transport_generation: 0,
                 connected: true,
                 connection_id: String::new(),
                 joined_at: now,
@@ -2916,6 +3004,8 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
         let prev = rt.room.host_id.clone();
         connection_id = Uuid::new_v4().to_string();
         p.connected = true;
+        p.direct_ready = false;
+        p.transport_generation = 0;
         p.connection_id = connection_id.clone();
         p.last_seen = now;
         rt.room.players.insert(p.id.clone(), p.clone());
@@ -2937,7 +3027,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
             },
         );
         announce_host_change(&rt, &prev);
-        rt.send_to(&player_id,json!({"t":"welcome","room":q.room,"resumed":resumed,"self":{"id":p.id,"token":p.token},"hostId":rt.room.host_id,"players":public_players(&rt.room),"profiles":profiles(&rt.room),"voices":voice_directory(&rt.room,Some(&p)),"bodies":rt.room.bodies,"game":public_game(&rt.room,&p.id),"selfState":self_state(&rt.room,&p)}));
+        rt.send_to(&player_id,json!({"t":"welcome","room":q.room,"mapId":MAP_PROTOCOL_ID,"resumed":resumed,"self":{"id":p.id,"token":p.token},"hostId":rt.room.host_id,"players":public_players(&rt.room),"profiles":profiles(&rt.room),"voices":voice_directory(&rt.room,Some(&p)),"bodies":rt.room.bodies,"game":public_game(&rt.room,&p.id),"selfState":self_state(&rt.room,&p)}));
         if !resumed {
             rt.broadcast(
                 json!({"t":"notice","text":format!("{} 加入了房间",p.name)}),

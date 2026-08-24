@@ -11,9 +11,11 @@ const originalSetDirect = proto._setDirect;
 const originalMarkOpen = proto._markOpen;
 const originalSend = proto.send;
 const originalClose = proto.close;
+const originalDeliverApp = proto._deliverApp;
 const activeSockets = new Set();
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 15000, 30000];
 const RTC_HANDSHAKE_TIMEOUT_MS = 20000;
+const DIRECT_REQUIRED_GRACE_MS = 25000;
 const POSITION_SYNC_TYPES = new Set([
   'emergency',
   'vent',
@@ -28,6 +30,82 @@ const POSITION_SYNC_TYPES = new Set([
 function parsePacket(data) {
   if (typeof data !== 'string' || data.length > 65536) return null;
   try { return JSON.parse(data); } catch (_) { return null; }
+}
+
+function phaseFromPacket(packet) {
+  const phase = packet?.game?.phase;
+  return typeof phase === 'string' ? phase : '';
+}
+
+function packetStartsGameplay(packet) {
+  const phase = phaseFromPacket(packet);
+  return packet?.t === 'game_start' || packet?.t === 'resume_play' || phase === 'playing' || phase === 'meeting';
+}
+
+function packetEndsGameplay(packet) {
+  const phase = phaseFromPacket(packet);
+  return packet?.t === 'game_over' || packet?.t === 'lobby_reset' || phase === 'lobby' || phase === 'ended';
+}
+
+function setGameplayPaused(socket, paused, reason = '') {
+  if (!socket || socket._v3GameplayPaused === paused) return;
+  socket._v3GameplayPaused = paused;
+  document.documentElement.toggleAttribute('data-direct-reconnecting', paused);
+  window.dispatchEvent(new CustomEvent('dtam-direct-required', {
+    detail: { paused, reason, generation: Number(socket._v3RtcGeneration || 0) },
+  }));
+}
+
+function clearDirectDeadline(socket) {
+  clearTimeout(socket?._v3DirectDeadlineTimer);
+  if (socket) socket._v3DirectDeadlineTimer = null;
+}
+
+function armDirectDeadline(socket, reason = 'Server 直连中断') {
+  if (!socket || socket._closed || socket._v3DirectDeadlineTimer) return;
+  setGameplayPaused(socket, true, reason);
+  socket._v3DirectDeadlineTimer = setTimeout(() => {
+    socket._v3DirectDeadlineTimer = null;
+    if (socket._closed || !socket._v3GameActive || directStillHealthy(socket)) return;
+    try {
+      socket._emitMessage(JSON.stringify({
+        t: 'error',
+        code: 'direct_required',
+        message: 'Server 直连恢复超时，正在重新连接',
+        close: true,
+      }));
+    } catch (_) {}
+    try { originalClose.call(socket, 4410, 'server direct transport required'); }
+    catch (_) { originalFinalClose.call(socket, 4410, 'server direct transport required', false); }
+  }, DIRECT_REQUIRED_GRACE_MS);
+}
+
+function clearQualitySampler(socket) {
+  clearInterval(socket?._v3QualityTimer);
+  if (socket) socket._v3QualityTimer = null;
+}
+
+function startQualitySampler(socket) {
+  clearQualitySampler(socket);
+  const sample = async () => {
+    if (!directStillHealthy(socket)) return;
+    try {
+      const stats = await socket._pc.getStats();
+      let pair = null;
+      stats.forEach(report => {
+        if (report.type === 'candidate-pair' && report.state === 'succeeded' && (report.nominated || !pair)) pair = report;
+      });
+      const seconds = Number(pair?.currentRoundTripTime);
+      const rttMs = Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : NaN;
+      const diagnostics = window.__DTAM_V3_TRANSPORT__;
+      if (diagnostics) diagnostics.rttMs = rttMs;
+      window.dispatchEvent(new CustomEvent('dtam-network-quality', {
+        detail: { mode: 'server-direct', direct: true, rttMs },
+      }));
+    } catch (_) {}
+  };
+  sample();
+  socket._v3QualityTimer = setInterval(sample, 2000);
 }
 
 function directStillHealthy(socket) {
@@ -193,7 +271,7 @@ proto._startRtc = async function generationAwareStartRtc() {
     signal.send(JSON.stringify({
       __v3: 'offer',
       description: pc.localDescription,
-      version: '3.0.0',
+      version: '3.0.1',
       rtcGeneration: generation,
     }));
     clearTimeout(this._v3RtcHandshakeTimer);
@@ -221,6 +299,36 @@ proto._acceptAnswer = async function generationAwareAcceptAnswer(description) {
   await pc.setRemoteDescription(answer);
 };
 
+proto._deliverApp = function directOnlyGameplayDelivery(data, transport) {
+  const text = typeof data === 'string' ? data : this._decodeData?.(data);
+  const packet = parsePacket(text);
+  if (!packet || packet.__v3) return originalDeliverApp.call(this, data, transport);
+
+  const endsGameplay = packetEndsGameplay(packet);
+  const startsGameplay = packetStartsGameplay(packet);
+  if (endsGameplay) {
+    this._v3GameActive = false;
+    clearDirectDeadline(this);
+    setGameplayPaused(this, false);
+  } else if (startsGameplay) {
+    this._v3GameActive = true;
+  }
+
+  // The initial welcome/error envelope may use Tunnel. Once a match is active, every
+  // authoritative gameplay packet must arrive over the WebRTC DataChannel.
+  const initialEnvelope = packet.t === 'welcome' || packet.t === 'error';
+  if (transport !== 'direct' && this._v3GameActive && !initialEnvelope) {
+    armDirectDeadline(this, '检测到非直连游戏数据，正在重建 Server 直连');
+    return;
+  }
+
+  const result = originalDeliverApp.call(this, data, transport);
+  if (this._v3GameActive && !directStillHealthy(this)) {
+    armDirectDeadline(this, '等待 Server 直连后继续游戏');
+  }
+  return result;
+};
+
 proto._markOpen = function patchedMarkOpen() {
   const result = originalMarkOpen.call(this);
   activeSockets.add(this);
@@ -235,6 +343,9 @@ proto._finalClose = function patchedFinalClose(code = 1006, reason = '', wasClea
     return;
   }
   clearRtcRetry(this);
+  clearDirectDeadline(this);
+  clearQualitySampler(this);
+  setGameplayPaused(this, false);
   invalidateRtc(this);
   activeSockets.delete(this);
   return originalFinalClose.call(this, code, reason, wasClean);
@@ -250,8 +361,16 @@ proto._setDirect = async function patchedSetDirect(value, reason = '') {
     this._v3RtcRetryAttempt = 0;
     const diagnostics = window.__DTAM_V3_TRANSPORT__;
     if (diagnostics) diagnostics.backup = this._signal?.readyState === 1 ? 'online' : 'offline';
+    clearDirectDeadline(this);
+    setGameplayPaused(this, false);
+    startQualitySampler(this);
     return result;
   }
+
+  clearQualitySampler(this);
+  const diagnostics = window.__DTAM_V3_TRANSPORT__;
+  if (diagnostics) diagnostics.rttMs = NaN;
+  if (this._v3GameActive) armDirectDeadline(this, reason || 'Server 直连中断，正在重建');
 
   // Closing the previous generation causes the server to announce fallback before the new
   // non-trickle offer has necessarily finished gathering. Do not restart the replacement
@@ -281,6 +400,48 @@ proto.send = function patchedSend(data) {
   const type = typeof packet?.t === 'string' ? packet.t : '';
   if (type === 'pos') this._v3LastPositionPacket = data;
 
+  const gameplayPacket = !!this._v3GameActive || type === 'start';
+  if (gameplayPacket) {
+    if (!directStillHealthy(this)) {
+      if (type === 'leave' && signalAvailable(this)) return originalSend.call(this, data);
+      armDirectDeadline(this, type === 'start' ? '所有玩家完成 Server 直连后才能开始' : 'Server 直连中断，游戏已暂停');
+      scheduleRtcRetry(this, 'direct-required-gameplay', true);
+      throw new DOMException('Server direct transport required', 'NetworkError');
+    }
+
+    // Keep proximity-sensitive actions and the exact position they depend on on the same
+    // reliable ordered channel. No Tunnel fallback is permitted after gameplay begins.
+    if (POSITION_SYNC_TYPES.has(type)) {
+      const position = this._v3LastPositionPacket;
+      const control = this._control;
+      if (control?.readyState === 'open' && control.bufferedAmount < 524288) {
+        try {
+          if (position) control.send(position);
+          control.send(data);
+          return;
+        } catch (_) {}
+      }
+      this._setDirect(false, '可靠 DataChannel 写入失败');
+      throw new DOMException('Server direct control channel unavailable', 'NetworkError');
+    }
+
+    if ((type === 'pos' || type === 'ping') && this._fast?.readyState === 'open') {
+      if (this._fast.bufferedAmount < 65536) {
+        this._fast.send(data);
+        return;
+      }
+      if (type === 'pos' || type === 'ping') return;
+    }
+
+    if (this._control?.readyState === 'open' && this._control.bufferedAmount < 524288) {
+      this._control.send(data);
+      return;
+    }
+
+    this._setDirect(false, 'DataChannel 写入失败');
+    throw new DOMException('Server direct transport unavailable', 'NetworkError');
+  }
+
   // v2.8 intentionally flushes position immediately before proximity-sensitive actions.
   // Two DataChannels would otherwise lose the original WebSocket ordering guarantee, so in
   // direct mode the latest position + action are sent on the same reliable control stream.
@@ -297,11 +458,8 @@ proto.send = function patchedSend(data) {
       }
     }
 
-    if (this._signal?.readyState === 1) {
-      if (position) this._signal.send(position);
-      this._signal.send(data);
-      return;
-    }
+    this._setDirect(false, '可靠 DataChannel 写入失败');
+    throw new DOMException('Server direct control channel unavailable', 'NetworkError');
   }
 
   return originalSend.call(this, data);
@@ -309,6 +467,9 @@ proto.send = function patchedSend(data) {
 
 proto.close = function patchedClose(code = 1000, reason = '') {
   clearRtcRetry(this);
+  clearDirectDeadline(this);
+  clearQualitySampler(this);
+  setGameplayPaused(this, false);
   invalidateRtc(this);
   activeSockets.delete(this);
   return originalClose.call(this, code, reason);

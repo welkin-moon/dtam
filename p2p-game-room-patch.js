@@ -1,4 +1,4 @@
-import { GameRoom } from './worker.js?v=p2p-browser-host-4';
+import { GameRoom } from './worker.js?v=20260824-direct-m3e1';
 
 const VOICE_SYNC = 'https://voice.lunarlab.uk/v1/sync';
 const voiceSyncState = new WeakMap();
@@ -78,7 +78,7 @@ GameRoom.prototype.webSocketMessage = async function patchedBrowserHostMessage(w
   } catch (_) {}
 
   if (packet?.t === 'ping') {
-    try { ws.send(JSON.stringify({ t:'pong', at:packet.at, serverAt:Date.now() })); } catch (_) {}
+    try { ws.send(JSON.stringify({ t:'pong', at:packet.at, seq:packet.seq, serverAt:Date.now() })); } catch (_) {}
     return;
   }
 

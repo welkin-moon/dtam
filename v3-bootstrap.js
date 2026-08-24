@@ -3,7 +3,7 @@
 
 const NativeWebSocket = window.WebSocket;
 const NativeRTCPeerConnection = window.RTCPeerConnection;
-const VERSION = '3.0.0';
+const VERSION = '3.0.1';
 const EDGE_ENDPOINTS = Array.isArray(window.__DTAM_EDGE_ENDPOINTS__) && window.__DTAM_EDGE_ENDPOINTS__.length
   ? window.__DTAM_EDGE_ENDPOINTS__
   : [{ id: 'shanghai-a', signal: 'wss://edge-d1.lunarlab.uk/edge' }];
@@ -17,7 +17,10 @@ const diagnostics = {
   mode: 'boot',
   endpoint: '',
   direct: false,
+  directRequired: true,
+  label: 'Server 建链',
   candidate: '',
+  rttMs: NaN,
   lastError: '',
 };
 window.__DTAM_V3_TRANSPORT__ = diagnostics;
@@ -87,6 +90,9 @@ async function describeSelectedPair(pc) {
     const label = relay ? 'TURN 中继' : lan ? 'LAN 直连' : '节点直连';
     const detail = [types, localAddress && remoteAddress ? `${localAddress} ↔ ${remoteAddress}` : ''].filter(Boolean).join(' · ');
     diagnostics.candidate = detail;
+    diagnostics.label = label;
+    const rtt = Number(pair.currentRoundTripTime);
+    diagnostics.rttMs = Number.isFinite(rtt) && rtt >= 0 ? rtt * 1000 : NaN;
     return { label, detail: detail || 'WebRTC DataChannel 已连接' };
   } catch (_) {
     return { label: '节点直连', detail: 'WebRTC DataChannel 已连接' };
@@ -140,7 +146,6 @@ class HybridWebSocket extends EventTarget {
     this._endpoint = null;
     this._edgeTimer = null;
     this._selfId = '';
-    this._needAuthoritySync = false;
     this._disconnectTimer = null;
     this._rtcStarted = false;
     this._connectNextEdge();
@@ -369,12 +374,15 @@ class HybridWebSocket extends EventTarget {
       diagnostics.direct = true;
       diagnostics.mode = 'direct';
       const selected = await describeSelectedPair(this._pc);
+      diagnostics.label = selected.label;
       setTransportBadge(`v3 · ${selected.label}`, selected.detail);
       return;
     }
     if (!this._direct && diagnostics.mode === 'tunnel') return;
     this._direct = false;
     diagnostics.direct = false;
+    diagnostics.label = 'Server 建链';
+    diagnostics.rttMs = NaN;
     diagnostics.mode = this._legacy ? 'legacy-tunnel' : 'tunnel';
     setTransportBadge(this._legacy ? 'v3 · Tunnel fallback' : 'v3 · Tunnel', reason || 'WebRTC 不可用，使用 Cloudflare Tunnel');
   }
@@ -402,26 +410,8 @@ class HybridWebSocket extends EventTarget {
     if (obj?.__v3) return;
 
     if (obj?.t === 'welcome') this._selfId = String(obj.self?.id || '');
-    if (obj?.t === 'game_start') this._needAuthoritySync = true;
 
     this._emitMessage(text);
-
-    if (obj?.t === 'state' && this._needAuthoritySync && this._selfId) {
-      const list = Array.isArray(obj.players) ? obj.players : Object.values(obj.players || {});
-      const self = list.find(p => String(p?.id || '') === this._selfId);
-      if (self?.pos && Number.isFinite(Number(self.pos.x)) && Number.isFinite(Number(self.pos.y))) {
-        this._needAuthoritySync = false;
-        queueMicrotask(() => this._emitMessage(JSON.stringify({ t: 'correct', x: Number(self.pos.x), y: Number(self.pos.y), v3AuthoritySync: true })));
-      }
-    }
-
-    if (obj?.t === 'lobby_reset' && this._selfId) {
-      const list = Array.isArray(obj.players) ? obj.players : Object.values(obj.players || {});
-      const self = list.find(p => String(p?.id || '') === this._selfId);
-      if (self?.pos && Number.isFinite(Number(self.pos.x)) && Number.isFinite(Number(self.pos.y))) {
-        queueMicrotask(() => this._emitMessage(JSON.stringify({ t: 'correct', x: Number(self.pos.x), y: Number(self.pos.y), v3AuthoritySync: true })));
-      }
-    }
 
     if (transport === 'direct') diagnostics.mode = 'direct';
   }

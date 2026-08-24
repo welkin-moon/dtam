@@ -1,4 +1,4 @@
-import { getNetworkConfig } from './net-config.js?v=hybrid-2';
+import { getNetworkConfig } from './net-config.js?v=20260824-direct-m3e1';
 
 const SIGNAL_HOST = 'p2p-signal.lunarlab.uk';
 const VOICE_HOST = 'voice.lunarlab.uk';

@@ -184,7 +184,7 @@ html:not(.dtam-debug) #networkDiagBtn {
     height: 8px !important;
     margin: 0 !important;
   }
-  #latencyStatus { display: none !important; }
+  #latencyStatus { display: inline-flex !important; min-width: 42px; }
   .room-id {
     min-width: 42px !important;
     padding-inline: 6px !important;

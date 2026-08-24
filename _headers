@@ -1,4 +1,5 @@
 /*
+  Cache-Control: no-cache, max-age=0, must-revalidate
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(self), geolocation=()
@@ -13,43 +14,43 @@
   Cache-Control: no-cache
 
 /game.js
-  Cache-Control: public, max-age=3600, immutable
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /net-config.js
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /signal-budget.js
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /runtime-policy.js
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /recovery-fanout.js
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /hybrid-transport.js
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /p2p-resilience.js
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /game-polish.js
   Cache-Control: no-cache
 
 /p2p-game-room-patch.js
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /p2p-entry.js
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /worker.js
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /v3-bootstrap.js
-  Cache-Control: public, max-age=3600, immutable
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /v3-resilience.js
-  Cache-Control: public, max-age=3600, immutable
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /styles.css
-  Cache-Control: public, max-age=3600, immutable
+  Cache-Control: no-cache, max-age=0, must-revalidate

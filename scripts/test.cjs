@@ -4,8 +4,13 @@ const vm=require('vm');
 const src=fs.readFileSync('game.js','utf8');
 const html=fs.readFileSync('index.html','utf8');
 const css=fs.readFileSync('styles.css','utf8');
+const playerCss=fs.readFileSync('player-shell.css','utf8');
 const headers=fs.readFileSync('_headers','utf8');
 const worker=fs.readFileSync('worker.js','utf8');
+const hybrid=fs.readFileSync('hybrid-transport.js','utf8');
+const v3=fs.readFileSync('v3-resilience.js','utf8');
+const edge=fs.readFileSync('edge/src/main.rs','utf8');
+const server=fs.readFileSync('server/src/main.rs','utf8');
 
 function assert(condition,message){if(!condition)throw new Error(`[2.8 test] ${message}`);}
 function includes(text,needle,message){assert(text.includes(needle),message||`missing ${needle}`);}
@@ -13,7 +18,8 @@ function excludes(text,needle,message){assert(!text.includes(needle),message||`u
 function approx(a,b,epsilon=1e-8){return Math.abs(a-b)<=epsilon;}
 
 new Function(src);
-includes(src,"const CLIENT_VERSION = '2.8'",'client version must be 2.8');
+includes(src,"const CLIENT_VERSION = '2.8.3'",'client version must be 2.8.3');
+includes(src,"const MAP_PROTOCOL_ID = 'dtam-map-150-v1'",'client map protocol identity must be explicit');
 includes(src,"const ROOM_CODE_RE = /^\\d{2}$/",'client room codes must be exactly two digits');
 includes(src,"Array.from({length:90},(_,i)=>String(i+10))",'room candidate pool must be 10-99');
 includes(src,"room=String(room).replace(/\\D/g,'').slice(0,2)",'room normalization must stop at two digits');
@@ -32,7 +38,7 @@ includes(src,"skipVoteBtn.onclick=()=>castVote('skip')",'skip vote must be wired
 includes(src,"backLobbyBtn.onclick=()=>{if(isHost)sendPacket({t:'reset'});else showToast('等待房主返回大厅');}",'only host may reset lobby');
 includes(src,'reportBlockedUntil=Date.now()+REPORT_GUARD_MS','post-kill report guard must exist');
 includes(src,'function meetingUiActive()','meeting state must have one canonical UI guard');
-includes(src,"const playing=gameState.phase==='playing'&&!meetingUiActive()",'scene actions must freeze during meetings');
+includes(src,"const playing=gameState.phase==='playing'&&!meetingUiActive()&&!networkPaused",'scene actions must freeze during meetings and direct recovery');
 includes(src,"meetingOverlay.classList.contains('show')||selfState.inVent",'movement must freeze while meeting overlay is shown');
 includes(src,"if(gameState.meeting&&!meetingOverlay.classList.contains('show'))openMeeting",'state messages must restore a missing meeting overlay');
 includes(src,"if(dead&&selfState.alive)return",'client must defensively reject ghost text');
@@ -48,17 +54,40 @@ includes(src,"const CONNECT_TIMEOUT_MS = 20000",'slow Cloudflare routes must get
 includes(src,"function renderLatency()",'frontend must display realtime RTT');
 includes(src,"function recordLatency(sample)",'frontend must smooth RTT and jitter');
 includes(src,"function sendAction(payload,syncPosition=true)",'critical actions must force a fresh position checkpoint');
+includes(src,'function applyAuthoritativePlayers(raw,{acceptSelf=false}={})','authoritative player snapshots must have a single reconciliation path');
+includes(src,'if(acceptSelf||awaitingAuthoritativeSelfPosition)','spawn and reset snapshots must override local prediction');
+includes(src,'seq<=remoteMoveSeq[id]','stale movement packets must be rejected');
+includes(src,'map:MAP_PROTOCOL_ID','every room connection must identify the canonical map protocol');
+includes(src,'directReady:p.directReady===true','Server direct readiness must be represented per player');
+includes(src,'startGameBtn.disabled=count<2||waiting>0','Server matches must wait for every direct transport');
 includes(src,"const REMOTE_PREDICTION_MAX_MS = 80",'remote movement prediction must be bounded');
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
-includes(html,'/styles.css?v=2.8.1','v2.8.1 cache-busted stylesheet must be loaded');
-includes(html,'/game.js?v=2.8.1','v2.8.1 cache-busted JavaScript must be loaded');
+includes(html,'/styles.css?v=20260824-direct-m3e1','current cache-busted stylesheet must be loaded');
+includes(html,'/hybrid-transport.js?v=20260824-direct-m3e1','current transport entry must be loaded');
+excludes(headers,'immutable','runtime assets must never pin mixed protocol versions');
+includes(headers,'Cache-Control: no-cache, max-age=0, must-revalidate','runtime assets must revalidate');
 includes(html,'maxlength="2"','room input must be two digits');
 includes(html,'pattern="[0-9]{2}"','room input must validate two digits');
 excludes(html,'gameplay-2.','legacy versioned CSS must not be loaded');
 excludes(css,'.voice-sink{display:none!important}','remote audio must never be removed from the render tree');
-includes(css,'#actionStack #killBtn{order:5}','kill button position must be stable');
-includes(css,'#actionStack #reportBtn{order:6}','report must not replace kill under the finger');
+includes(css,'#actionStack #killBtn { order: 5;','kill button position must be stable');
+includes(css,'#actionStack #reportBtn { order: 6;','report must not replace kill under the finger');
+excludes(playerCss,'#latencyStatus { display: none','latency must stay visible on compact devices');
+
+includes(hybrid,"const FAST_OUT=new Set(['pos','ping'])",'P2P position and RTT probes must use the fast channel');
+includes(hybrid,"FAST_IN=new Set(['pos','pong'])",'P2P position and RTT replies must use the fast channel');
+includes(hybrid,"await import('./v3-bootstrap.js?v=20260824-direct-m3e1')",'Server mode must load the v3 direct transport');
+includes(v3,'No Tunnel fallback is permitted after gameplay begins','Server gameplay must not silently fall back to Tunnel');
+includes(v3,"type === 'leave' && signalAvailable(this)",'only explicit leave may use signaling during a match');
+includes(v3,"throw new DOMException('Server direct transport required'",'loss of direct gameplay transport must fail closed');
+includes(edge,'fn is_reserved_transport_message','Edge must reserve direct readiness reports');
+includes(edge,'if direct_required && !tunnel_server_message_allowed(&text)','Edge must discard server gameplay fallback traffic');
+includes(edge,'game_active.load(Ordering::Acquire)','Edge must discard client Tunnel traffic during gameplay');
+includes(server,'"directReady":p.direct_ready','Core state must expose verified direct readiness');
+includes(server,'if t == "transport_ready"','Core must ingest Edge transport state');
+includes(server,'"code":"direct_not_ready"','Core must refuse to start before all players are direct');
+includes(server,'let direct_required = matches!(rt.room.phase.as_str(), "playing" | "meeting")','Core must reject gameplay while a player is not direct');
 
 includes(worker,"version:'2.7'",'legacy rollback Worker must remain v2.7-compatible');
 includes(worker,"if(!/^\\d{2}$/.test(room))",'Worker must enforce strict two-digit room codes');
@@ -74,7 +103,7 @@ const marker='const $=id=>document.getElementById(id);';
 const cut=src.indexOf(marker);
 assert(cut>0,'map prelude marker missing');
 const context={Uint8Array,Math,Set,Map,console};
-const prelude=src.slice(0,cut).replace(/^\(\(\) => \{\n'use strict';\n+/,'');
+const prelude=src.slice(0,cut).replace(/^\(\(\) => \{\r?\n'use strict';\r?\n+/,'');
 vm.runInNewContext(prelude+`\nglobalThis.__map={MAP_SIZE,NETWORK_MAP_SIZE,NETWORK_TO_CLIENT,CLIENT_TO_NETWORK,MAP_DATA,NETWORK_MAP_DATA,OBJECT_DEFS,NETWORK_OBJECT_DEFS,VENT_DEFS,NETWORK_VENT_DEFS,DOOR_CELLS,NETWORK_DOOR_CELLS,toClientCoord,toNetworkCoord};`,context,{timeout:2000});
 const m=context.__map;
 assert(m.MAP_SIZE===100,'evaluated client map size mismatch');
@@ -129,7 +158,7 @@ for(const item of [...m.NETWORK_OBJECT_DEFS,...m.NETWORK_VENT_DEFS])assert(netwo
 assert(clientFlood.queue.length>m.MAP_SIZE*m.MAP_SIZE*.5,'client-visible map is unexpectedly fragmented');
 assert(networkFlood.queue.length>m.NETWORK_MAP_SIZE*m.NETWORK_MAP_SIZE*.55,'Worker map is unexpectedly fragmented');
 
-console.log('[dtam] gameplay 2.8 tests passed',{
+console.log('[dtam] gameplay 2.8.3 direct-sync tests passed',{
   clientWalkableReachable:clientFlood.queue.length,
   networkWalkableReachable:networkFlood.queue.length,
   objects:m.OBJECT_DEFS.length,
