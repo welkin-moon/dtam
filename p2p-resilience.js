@@ -4,6 +4,7 @@ const SIGNAL = 'https://p2p-signal.lunarlab.uk';
 const BaseWebSocket = window.WebSocket;
 const RECOVER_KEY = 'au-dtam-p2p-recovery:';
 const SNAP_KEY = 'au-dtam-p2p-snapshot:';
+const GAMEPLAY_RECONNECT_POLL_MS = 5000;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const rid = () => { try { return crypto.randomUUID().replace(/-/g, ''); } catch (_) { return Math.random().toString(36).slice(2) + Date.now().toString(36); } };
 
@@ -65,11 +66,14 @@ function startGameplayWatch(sock) {
       }
     } catch (_) {}
     if (!sock.closed && sock.__dtamGameplayWatch !== null) {
-      sock.__dtamGameplayWatch = setTimeout(tick, document.hidden ? 20000 : 12000);
+      // Keep this comfortably below the game's 20 s connection deadline. One
+      // poll per 5 s is only 720 control-plane reads per room-hour and prevents
+      // background-tab reconnects from spending the whole deadline waiting.
+      sock.__dtamGameplayWatch = setTimeout(tick, GAMEPLAY_RECONNECT_POLL_MS);
     }
   };
-  sock.__dtamGameplayWatch = setTimeout(tick, 1800);
-  diag({ gameplayReconnectWatch:true });
+  sock.__dtamGameplayWatch = setTimeout(tick, 1000);
+  diag({ gameplayReconnectWatch:true, gameplayReconnectPollMs:GAMEPLAY_RECONNECT_POLL_MS });
 }
 
 async function inspectPc(pc) {
@@ -103,6 +107,7 @@ function patchSocket(sock) {
   sock.guest = async function resilientGuest(rec = null) {
     const peerId = rid();
     badge('正在加入房间…');
+    diag({ joinStage:'admission', joinPeerId:peerId, joinStageAt:Date.now() });
     let joinToken = '';
     try {
       const joined = await signal(`/v2/rooms/${this.room}/join`, {
@@ -110,8 +115,10 @@ function patchSocket(sock) {
         body:JSON.stringify({ peerId, recoveryToken:rec?.recoveryToken || '' }),
       });
       joinToken = String(joined.joinToken || '');
+      diag({ joinStage:'waiting-offer', joinStageAt:Date.now() });
       if (rec) saveRecovery(this.room, { ...rec, epoch:Number(joined.epoch || rec.epoch || 1) });
     } catch (e) {
+      diag({ joinStage:'admission-failed', joinStageError:String(e?.message || e) });
       if (['room_not_found','game_in_progress'].includes(e.code) && this.cfg?.mode === 'p2p') {
         this.open('p2p-error');
         this.deliver(JSON.stringify({ t:'error', code:e.code, message:e.message }));
@@ -121,9 +128,8 @@ function patchSocket(sock) {
     }
 
     let offer = null;
-    // A hidden host may only hit D1 every 12s, then still needs time to gather ICE
-    // before it can publish the offer. Keep the guest alive beyond that full window
-    // without increasing the host's steady-state polling rate.
+    // The host's in-game reconnect watcher now runs at most 5 s apart. Keep a
+    // generous offer window for timer throttling without increasing CF load.
     const offerPoll = [120,180,260,380,550,750,1000,1400,2200,3500,5200,7000];
     for (const delay of offerPoll) {
       await sleep(delay);
@@ -137,7 +143,7 @@ function patchSocket(sock) {
     }
     if (!offer) return this.fallback('等待房主响应超时');
     const remoteIceCandidates = iceCandidateCount(offer);
-    diag({ remoteIceCandidates });
+    diag({ remoteIceCandidates, joinStage:'creating-answer', joinStageAt:Date.now() });
     if (!remoteIceCandidates) return this.fallback(noCandidateReason('remote'));
 
     const pc = this.pc = new RTCPeerConnection({
@@ -147,7 +153,9 @@ function patchSocket(sock) {
     });
     pc.ondatachannel = e => this.bind(e.channel);
     pc.onconnectionstatechange = async () => {
+      diag({ joinPcState:pc.connectionState, joinIceState:pc.iceConnectionState });
       if (pc.connectionState === 'connected') {
+        diag({ joinStage:'datachannel-negotiation', joinStageAt:Date.now() });
         inspectPc(pc);
       } else if (['failed','closed'].includes(pc.connectionState) && !this.closed) {
         if (!this.opened) this.fallback('建立连接失败');
@@ -155,29 +163,36 @@ function patchSocket(sock) {
       }
     };
 
+    let stage = 'set-remote-offer';
     try {
       await pc.setRemoteDescription(offer);
+      stage = 'create-answer';
       const answer = await pc.createAnswer();
+      stage = 'set-local-answer';
       await pc.setLocalDescription(answer);
+      stage = 'gather-local-ice';
       await waitIceFast(pc, 2400);
       const localDescription = pc.localDescription;
       const localIceCandidates = iceCandidateCount(localDescription);
-      diag({ localIceCandidates });
+      diag({ localIceCandidates, joinStage:'posting-answer', joinStageAt:Date.now() });
       if (!localIceCandidates) return this.fallback(noCandidateReason('local'));
+      stage = 'post-answer';
       await signal(`/v2/rooms/${this.room}/answers/${peerId}`, {
         method:'POST',
         body:JSON.stringify({ joinToken, answer:localDescription }),
       });
-    } catch (_) {
-      return this.fallback('提交连接信息失败');
+      diag({ joinStage:'waiting-datachannel', joinStageAt:Date.now() });
+    } catch (e) {
+      diag({ joinStage:`${stage}-failed`, joinStageError:String(e?.message || e), joinStageAt:Date.now() });
+      return this.fallback(`连接协商失败（${stage}）`);
     }
-    setTimeout(() => !this.opened && this.fallback('建立连接超时'), 7000);
+    setTimeout(() => !this.opened && this.fallback('已交换连接信息，但数据通道建立超时'), 7000);
   };
 
   sock.fallback = async function resilientFallback(reason) {
     if (this.closed || this.opened) return;
     const candidate = this.__dtamRecoveryCandidate;
-    const recoverable = candidate && !this.__dtamRecoveryAttempted && /offer|ICE|answer|房间不可用|响应超时|建立连接/i.test(String(reason || ''));
+    const recoverable = candidate && !this.__dtamRecoveryAttempted && /offer|ICE|answer|房间不可用|响应超时|建立连接|数据通道/i.test(String(reason || ''));
     if (recoverable) {
       this.__dtamRecoveryAttempted = true;
       badge('房主连接中断，正在迁移…', String(reason || ''));
@@ -216,6 +231,7 @@ function patchSocket(sock) {
   const originalOpen = sock.open.bind(sock);
   sock.open = function resilientOpen(mode) {
     const out = originalOpen(mode);
+    diag({ joinStage:'socket-open', joinStageAt:Date.now() });
     setTimeout(() => {
       if (this.pc?.connectionState === 'connected') inspectPc(this.pc);
       if (this.mb?.peers) for (const p of this.mb.peers.values()) if (p.pc?.connectionState === 'connected') inspectPc(p.pc);
