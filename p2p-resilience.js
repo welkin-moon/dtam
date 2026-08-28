@@ -5,6 +5,8 @@ const BaseWebSocket = window.WebSocket;
 const RECOVER_KEY = 'au-dtam-p2p-recovery:';
 const SNAP_KEY = 'au-dtam-p2p-snapshot:';
 const GAMEPLAY_RECONNECT_POLL_MS = 5000;
+const RECOVERY_OFFER_POLL = [120,180,260,380,550,750,1000,1400,2200,3000,2500];
+const NORMAL_OFFER_POLL = [120,180,260,380,550,750,1000,1400,2200,3500,5200,7000];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const rid = () => { try { return crypto.randomUUID().replace(/-/g, ''); } catch (_) { return Math.random().toString(36).slice(2) + Date.now().toString(36); } };
 
@@ -67,7 +69,18 @@ function startGameplayWatch(sock) {
       for (const p of data.peers || []) {
         if (!sock.mb.peers.has(p.peerId)) sock.mb.peer(p.peerId).catch(() => {});
       }
-    } catch (_) {}
+    } catch (e) {
+      // /recover uses an epoch CAS. Once another standby wins, the old host token
+      // becomes invalid. Treat that 403 as a fencing signal and immediately
+      // demote the stale authority so split-brain is bounded by one watch period.
+      if (e?.code === 'forbidden') {
+        stopGameplayWatch(sock);
+        diag({ authoritySuperseded:true, recovering:true, lastError:'authority epoch superseded' });
+        badge('房主已迁移 · 正在重连', '检测到更高 authority epoch，旧房主已主动让位');
+        try { sock.finish(4003, 'authority superseded', false); } catch (_) {}
+        return;
+      }
+    }
     if (!sock.closed && sock.__dtamGameplayWatch !== null) {
       // Keep this comfortably below the game's 20 s connection deadline. One
       // poll per 5 s is only 720 control-plane reads per room-hour and prevents
@@ -131,9 +144,10 @@ function patchSocket(sock) {
     }
 
     let offer = null;
-    // The host's in-game reconnect watcher now runs at most 5 s apart. Keep a
-    // generous offer window for timer throttling without increasing CF load.
-    const offerPoll = [120,180,260,380,550,750,1000,1400,2200,3500,5200,7000];
+    // A socket with a hot-standby snapshot must leave enough of the global 20 s
+    // connect budget to perform an epoch-CAS recovery. A fresh join has no such
+    // fallback and therefore keeps the longer offer window.
+    const offerPoll = this.__dtamRecoveryCandidate ? RECOVERY_OFFER_POLL : NORMAL_OFFER_POLL;
     for (const delay of offerPoll) {
       await sleep(delay);
       if (this.closed) return;
@@ -144,7 +158,7 @@ function patchSocket(sock) {
         if (e.code === 'peer_not_found') return this.fallback('加入请求已过期');
       }
     }
-    if (!offer) return this.fallback('等待房主响应超时');
+    if (!offer) return this.fallback(this.__dtamRecoveryCandidate ? '房主未响应，准备接管房间' : '等待房主响应超时');
     const remoteIceCandidates = iceCandidateCount(offer);
     diag({ remoteIceCandidates, joinStage:'creating-answer', joinStageAt:Date.now() });
     if (!remoteIceCandidates) return this.fallback(noCandidateReason('remote'));
@@ -195,20 +209,24 @@ function patchSocket(sock) {
   sock.fallback = async function resilientFallback(reason) {
     if (this.closed || this.opened) return;
     const candidate = this.__dtamRecoveryCandidate;
-    const recoverable = candidate && !this.__dtamRecoveryAttempted && /offer|ICE|answer|房间不可用|响应超时|建立连接|数据通道/i.test(String(reason || ''));
+    const recoverable = candidate && !this.__dtamRecoveryAttempted && /offer|ICE|answer|房间不可用|响应超时|建立连接|数据通道|准备接管/i.test(String(reason || ''));
     if (recoverable) {
       this.__dtamRecoveryAttempted = true;
       badge('房主连接中断，正在迁移…', String(reason || ''));
-      diag({ lastError:String(reason || ''), recovering:true });
-      await sleep(900 + Math.random() * 700);
+      diag({ lastError:String(reason || ''), recovering:true, recoveryStage:'claiming-epoch' });
+      // Small jitter prevents all hot standbys from hitting the epoch CAS together.
+      await sleep(250 + Math.random() * 450);
       try {
         const won = await this.tryRecover(candidate.rec, candidate.snapshot);
         if (won) {
-          diag({ recovering:false });
+          diag({ recovering:false, recoveryStage:'authority-open' });
           badge('已恢复 · 新房主');
           return true;
         }
-      } catch (_) {}
+        diag({ recoveryStage:'epoch-lost' });
+      } catch (e) {
+        diag({ recoveryStage:'claim-failed', recoveryError:String(e?.message || e) });
+      }
     }
     diag({ lastError:String(reason || ''), recovering:false, serverSkipped:true });
     badge('联机失败', String(reason || ''));
@@ -274,4 +292,4 @@ for (const key of ['CONNECTING','OPEN','CLOSING','CLOSED']) {
   try { Object.defineProperty(WrappedWebSocket, key, { value:BaseWebSocket[key] }); } catch (_) {}
 }
 window.WebSocket = WrappedWebSocket;
-diag({ resilience:'fast-join+in-game-reconnect+delayed-recovery', serverPolicy:getNetworkConfig().mode === 'server' ? 'manual-server' : 'p2p-only' });
+diag({ resilience:'fast-join+fenced-host-migration', serverPolicy:getNetworkConfig().mode === 'server' ? 'manual-server' : 'p2p-only' });
