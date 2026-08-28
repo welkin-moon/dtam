@@ -46,9 +46,57 @@ function installVoiceErrorCopy() {
   new MutationObserver(rewrite).observe(toast, { childList:true, subtree:true, characterData:true });
 }
 
+function installVoiceSinkDeduper() {
+  const sink = document.getElementById('voiceSink');
+  if (!sink) return;
+  let scheduled = false;
+  const prune = () => {
+    scheduled = false;
+    const audios = [...sink.querySelectorAll('audio[data-voice-key]')];
+    const newest = new Map();
+    // Keys are <sessionId>|<trackName>. A transport rebuild may leave an old
+    // session for the same physical remote track alive after the replacement
+    // session arrives. Keep the newest DOM node for each trackName.
+    for (const audio of audios) {
+      const key = String(audio.dataset.voiceKey || '');
+      const split = key.indexOf('|');
+      const track = split >= 0 ? key.slice(split + 1) : key;
+      if (!track) continue;
+      const previous = newest.get(track);
+      if (previous && previous !== audio) {
+        try { previous.pause(); } catch (_) {}
+        try { previous.srcObject = null; } catch (_) {}
+        previous.remove();
+      }
+      newest.set(track, audio);
+    }
+  };
+  const queue = () => {
+    if (scheduled) return;
+    scheduled = true;
+    queueMicrotask(prune);
+  };
+  new MutationObserver(queue).observe(sink, { childList:true });
+  queue();
+}
+
+function clearStaticLobbyToast() {
+  const toast = document.getElementById('gameToast');
+  if (!toast) return;
+  const clear = () => {
+    if (!toast.classList.contains('show') && String(toast.textContent || '').trim() === '等待玩家加入…') {
+      toast.textContent = '';
+    }
+  };
+  clear();
+  new MutationObserver(clear).observe(toast, { attributes:true, attributeFilter:['class'] });
+}
+
 function boot() {
   installTaskLoadGuard();
   installVoiceErrorCopy();
+  installVoiceSinkDeduper();
+  clearStaticLobbyToast();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true });
