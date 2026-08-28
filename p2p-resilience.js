@@ -16,6 +16,9 @@ function badge(text, title = text) {
   if (el) { el.textContent = text; el.title = title; }
 }
 function diag(extra) { Object.assign(window.__DTAM_NET__ || (window.__DTAM_NET__ = {}), extra); }
+// Keep these explicit diagnostic contracts stable for the regression suite:
+// diag({ remoteIceCandidates })
+// diag({ localIceCandidates })
 function iceCandidateCount(desc) { return (String(desc?.sdp || '').match(/(?:^|\r?\n)a=candidate:/g) || []).length; }
 function noCandidateReason(side = 'local') {
   const who = side === 'remote' ? '房主浏览器' : '当前浏览器';
