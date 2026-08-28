@@ -2,7 +2,11 @@ const NativeFetch = window.fetch.bind(window);
 const SIGNAL_HOST = 'p2p-signal.lunarlab.uk';
 const FAST_MS = 1200;
 const VISIBLE_STEPS = [1200, 1600, 2100, 2600, 3000];
-const HIDDEN_MS = 12000;
+// A hidden browser-host must still discover a reconnect quickly enough for the
+// client-side 20 s room connection deadline. 5 s keeps the worst case
+// (poll + host ICE + guest ICE) below that deadline while remaining tiny
+// compared with the Workers/D1 free quotas.
+const HIDDEN_MS = 5000;
 const states = new Map();
 const stats = window.__DTAM_SIGNAL_BUDGET__ = {
   networkRequests: 0,
@@ -74,9 +78,8 @@ window.addEventListener('dtam-network-config', () => {
   for (const state of states.values()) state.nextAt = 0;
 });
 
-// If a lobby host returns to the foreground, do not keep the old 12s hidden-tab
-// cooldown. The mailbox's next poll can then hit D1 immediately instead of
-// missing an already-waiting guest for another hidden interval.
+// If a browser-host returns to the foreground, do not keep the old hidden-tab
+// cooldown. The mailbox's next poll can then hit D1 immediately.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   for (const state of states.values()) state.nextAt = 0;
