@@ -58,17 +58,17 @@
             <div class="hud-left"><span class="room-tag">房间</span><button type="button" class="room-id" id="roomIdDisplay" title="复制房间号" aria-label="复制房间号">--</button><span id="connectionStatus" data-state="offline" role="button" tabindex="0" aria-label="网络状态及诊断" title="点击查看网络诊断">离线</span><span id="latencyStatus" data-quality="unknown" role="button" tabindex="0" aria-label="网络延迟及诊断" title="点击查看网络诊断">-- ms</span><button type="button" id="playerCountBtn" aria-label="查看在线玩家" aria-expanded="false"><strong id="playerCountNum">1</strong> / 15</button></div>
             <div class="hud-right"><span class="my-name"><span id="hudMyName">玩家</span></span><button type="button" id="mapBtn" title="任务地图" aria-expanded="false">地图</button><button type="button" id="micBtn" title="语音聊天" data-state="off">麦克风关</button><button type="button" id="chatToggle" aria-label="打开聊天" aria-expanded="false">聊天</button><div id="hudMoreWrap"><button type="button" id="moreBtn" aria-label="更多选项" aria-expanded="false">更多</button><div id="hudMoreMenu" hidden><button type="button" id="settingsBtn">切换主题</button><button type="button" class="btn-leave" id="leaveBtn">退出房间</button></div></div></div>
         </div>
-        <div id="gameToast" aria-live="polite">等待玩家加入…</div>
+        <div id="gameToast" aria-live="polite"></div>
     </div>
-    <!-- build: 20260824-direct-m3e1 -->
+    <!-- build: 20260828-reconnect-voice1 -->
     <script type="module" src="/net-config.js?v=20260824-direct-m3e1"></script>
-    <script type="module" src="/signal-budget.js?v=20260824-direct-m3e1"></script>
+    <script type="module" src="/signal-budget.js?v=20260828-reconnect1"></script>
     <script type="module" src="/runtime-policy.js?v=20260824-direct-m3e1"></script>
     <script type="module" src="/recovery-fanout.js?v=20260824-direct-m3e1"></script>
     <script type="module" src="/p2p-game-room-patch.js?v=20260824-direct-m3e1"></script>
     <script type="module" src="/p2p-join-guard.js?v=20260824-direct-m3e1"></script>
     <script type="module" src="/hybrid-transport.js?v=20260824-direct-m3e1"></script>
     <script type="module" src="/p2p-resilience.js?v=20260824-direct-m3e1"></script>
-    <script type="module" src="/runtime-guard.js?v=20260824-guard1"></script>
+    <script type="module" src="/runtime-guard.js?v=20260828-guard2"></script>
 </body>
 </html>
