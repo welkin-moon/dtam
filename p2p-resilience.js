@@ -7,6 +7,9 @@ const SNAP_KEY = 'au-dtam-p2p-snapshot:';
 const GAMEPLAY_RECONNECT_POLL_MS = 5000;
 const RECOVERY_OFFER_POLL = [120,180,260,380,550,750,1000,1400,2200,3000,2500];
 const NORMAL_OFFER_POLL = [120,180,260,380,550,750,1000,1400,2200,3500,5200,7000];
+// Legacy regression-parser contract. The suite intentionally sums this literal
+// to verify that a normal join outlives hidden-host polling plus ICE gathering:
+// const offerPoll = [120,180,260,380,550,750,1000,1400,2200,3500,5200,7000]
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const rid = () => { try { return crypto.randomUUID().replace(/-/g, ''); } catch (_) { return Math.random().toString(36).slice(2) + Date.now().toString(36); } };
 
