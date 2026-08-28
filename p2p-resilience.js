@@ -222,6 +222,13 @@ function patchSocket(sock) {
       try {
         const won = await this.tryRecover(candidate.rec, candidate.snapshot);
         if (won) {
+          // tryRecover() starts the base 2.2 s mailbox poll. A recovered host in
+          // an active match should immediately return to the same 5 s fenced
+          // watcher as a normal host, while keeping snapshot fanout alive.
+          if (this.auth?.room?.phase && this.auth.room.phase !== 'lobby') {
+            this.mb?.stop();
+            startGameplayWatch(this);
+          }
           diag({ recovering:false, recoveryStage:'authority-open' });
           badge('已恢复 · 新房主');
           return true;
