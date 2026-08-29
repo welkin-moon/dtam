@@ -2028,3 +2028,15 @@ html[data-direct-reconnecting] #game::after {
   width: 1px !important;
   height: 1px !important;
 }
+
+/* Gameplay flow hardening */
+#meetingOverlay { z-index: 90; }
+#endOverlay { z-index: 92; }
+.role-count-note { padding: 5px 7px; border-radius: var(--shape-sm); }
+.role-count-note[data-state="ok"] { color: var(--success); background: color-mix(in srgb, var(--success) 8%, transparent); }
+.role-count-note[data-state="error"] { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); font-weight: 700; }
+#endRoster { display: grid; gap: 6px; margin: 16px 0; text-align: left; }
+.end-role-row { min-height: 42px; display: flex; align-items: center; gap: 9px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--shape-md); background: var(--surface-2); }
+.end-role-row > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+.end-role-row > strong { color: #2563eb; font-size: 12px; }
+.end-role-row.impostor > strong { color: var(--danger); }

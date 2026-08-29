@@ -57,4 +57,23 @@ includes(worker,'async startMeeting(player','browser authority must handle meeti
 includes(worker,'broadcastVoiceDirectory(){','browser authority must maintain the voice directory');
 includes(worker,"this.phase==='playing'||this.phase==='meeting'",'meeting phase must remain active-game context for ghost isolation');
 
+includes(src,'function roleCapacity(st,count)','lobby must validate role capacity before starting');
+includes(src,'职业数量会按当前人数校验；超出可用名额时需调整后才能开始。','lobby copy must describe hard role-capacity validation');
+excludes(src,'由服务器自动裁剪','lobby must not claim impossible role settings are silently clipped');
+includes(src,'hasNetworkLineOfSight(myPos,pos)','client action targeting must respect canonical wall line-of-sight');
+includes(src,'taskRequestTimer=setTimeout','task loading must have a bounded request timeout');
+includes(src,'closeToolOverlays(true)','meeting/end transitions must force-close stale gameplay overlays');
+includes(src,'id="endRoster"','end screen must reveal the final role roster');
+includes(src,"if(msg.t==='action_fail')",'authoritative action rejection must surface to the player');
+includes(src,"if(msg.t==='guardian_assigned')",'ejected guardian assignment must be visible to the player');
+includes(css,'#meetingOverlay { z-index: 90; }','meeting overlay must outrank ordinary tool overlays');
+includes(css,'#endOverlay { z-index: 92; }','end overlay must outrank in-game overlays');
+includes(worker,'actionFail(ws,code,message)','authority must support nonfatal action feedback');
+includes(worker,'assignGuardian(player,now=Date.now())','guardian assignment must share one authoritative path');
+includes(worker,'updateMeetingEligibility()','meeting eligibility must react to disconnects');
+includes(worker,'p.activeTask=null;','meetings must invalidate active task challenges');
+includes(worker,"'role_capacity'",'authority must reject impossible role configurations rather than silently clipping');
+includes(worker,"t:'repair_ok',stationId,done",'final sabotage repair must acknowledge the repairing player');
+includes(worker,"t:'guardian_assigned'",'vote ejection must be able to assign guardian angel');
+
 console.log('[2.8 test] ok');
