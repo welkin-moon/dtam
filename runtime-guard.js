@@ -1,5 +1,33 @@
 const TASK_LOAD_TIMEOUT_MS = 6000;
 
+function installVoiceFetchRetry() {
+  if (window.__DTAM_VOICE_FETCH_RETRY__) return;
+  window.__DTAM_VOICE_FETCH_RETRY__ = true;
+  const baseFetch = window.fetch.bind(window);
+  const retryable = (input, init = {}) => {
+    try {
+      const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+      const method = String(init?.method || (input instanceof Request ? input.method : 'GET') || 'GET').toUpperCase();
+      return url.hostname === 'voice.lunarlab.uk' &&
+        (url.pathname.includes('/tracks/new') || url.pathname.includes('/renegotiate')) &&
+        (method === 'POST' || method === 'PUT');
+    } catch (_) { return false; }
+  };
+  window.fetch = async function voiceResilientFetch(input, init = {}) {
+    try {
+      return await baseFetch(input, init);
+    } catch (firstError) {
+      if (!retryable(input, init)) throw firstError;
+      await new Promise(resolve => setTimeout(resolve, 650));
+      try {
+        return await baseFetch(input, init);
+      } catch (_) {
+        throw firstError;
+      }
+    }
+  };
+}
+
 function installTaskLoadGuard() {
   const modal = document.getElementById('taskModal');
   const body = document.getElementById('taskModalBody');
@@ -93,6 +121,7 @@ function clearStaticLobbyToast() {
 }
 
 function boot() {
+  installVoiceFetchRetry();
   installTaskLoadGuard();
   installVoiceErrorCopy();
   installVoiceSinkDeduper();
