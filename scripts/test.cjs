@@ -51,7 +51,7 @@ includes(css,'#actionStack #reportBtn { order: 6;','report must not replace kill
 excludes(playerCss,'#latencyStatus { display: none','latency must stay visible on compact devices');
 
 includes(hybrid,"const FAST_OUT=new Set(['pos','ping'])",'P2P position and RTT probes must use the fast channel');
-includes(hybrid,"createDataChannel('dtam-fast',{ordered:false,maxRetransmits:0})",'fast P2P channel must be unordered and non-retransmitting');
+includes(hybrid,"createDataChannel('dtam-fast',{ordered:false,maxRetransmits:0,priority:'high'})",'fast P2P channel must be unordered, non-retransmitting and high-priority');
 includes(hybrid,'Math.abs(n-i)<=24','symmetric UDP NAT probing must stay bounded');
 includes(hybrid,'recoverySnapshot','P2P transport must carry recovery snapshots');
 includes(hybrid,'sendSnapshotTo','host must be able to push recovery snapshot to a hot standby');
