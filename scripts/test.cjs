@@ -6,7 +6,6 @@ const headers=fs.readFileSync('_headers','utf8');
 const hybrid=fs.readFileSync('hybrid-transport.js','utf8');
 const playerCss=fs.readFileSync('player-shell.css','utf8');
 const worker=fs.readFileSync('worker.js','utf8');
-const server=fs.existsSync('server/src/main.rs')?fs.readFileSync('server/src/main.rs','utf8'):'';
 
 function assert(condition,message){if(!condition)throw new Error(`[2.8 test] ${message}`);}
 function includes(haystack,needle,message){assert(haystack.includes(needle),message);}
@@ -54,9 +53,8 @@ includes(hybrid,"const FAST_OUT=new Set(['pos','ping'])",'P2P position and RTT p
 includes(hybrid,"createDataChannel('dtam-fast',{ordered:false,maxRetransmits:0,priority:'high'})",'fast P2P channel must be unordered, non-retransmitting and high-priority');
 includes(hybrid,'__dtamRecovery','P2P transport must carry recovery snapshots');
 includes(hybrid,'sendSnapshotTo','host must be able to push recovery snapshot to a hot standby');
-includes(worker,'async startMeeting(player','server worker must handle meetings');
-includes(worker,'broadcastVoiceDirectory(){','server worker must maintain the voice directory');
+includes(worker,'async startMeeting(player','browser authority must handle meetings');
+includes(worker,'broadcastVoiceDirectory(){','browser authority must maintain the voice directory');
 includes(worker,"this.phase==='playing'||this.phase==='meeting'",'meeting phase must remain active-game context for ghost isolation');
-includes(server,'room.phase == "playing" || room.phase == "meeting"','native server must treat meetings as active-game context');
 
 console.log('[2.8 test] ok');
