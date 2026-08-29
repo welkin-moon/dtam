@@ -6,7 +6,9 @@ const OLD_VOICE_HOST = 'rt-d1.lunarlab.uk';
 const NativePC = window.RTCPeerConnection;
 const NativeWS = window.WebSocket;
 const NativeFetch = window.fetch.bind(window);
+const trackedPcs = new Set();
 let turnIceServers = [];
+let fastDropCount = 0;
 
 function updateDiag(extra = {}) {
   const d = window.__DTAM_NET__ || (window.__DTAM_NET__ = {});
@@ -34,6 +36,92 @@ function rewriteVoiceTarget(input) {
     updateDiag({ voiceBackend:'cloudflare-edge' });
     return u.href;
   } catch (_) { return input; }
+}
+
+function candidateFamily(candidate) {
+  const address = String(candidate?.address || candidate?.ip || '');
+  if (address.includes(':')) return 'IPv6';
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(address)) return 'IPv4';
+  return '';
+}
+
+function tuneDataChannel(channel) {
+  if (!channel || channel.__dtamLowLatencyTuned) return channel;
+  channel.__dtamLowLatencyTuned = true;
+  if (channel.label === 'dtam-fast') {
+    try { channel.bufferedAmountLowThreshold = 512; } catch (_) {}
+    const nativeSend = channel.send.bind(channel);
+    channel.send = function dtamFastSend(data) {
+      // Position packets are disposable state. Never let stale coordinates sit behind
+      // a growing SCTP send queue: the next packet is always more useful than this one.
+      if (channel.readyState === 'open' && Number(channel.bufferedAmount || 0) > 4096) {
+        fastDropCount += 1;
+        updateDiag({ fastDrops:fastDropCount, fastBufferedAmount:Number(channel.bufferedAmount || 0) });
+        return;
+      }
+      return nativeSend(data);
+    };
+  }
+  return channel;
+}
+
+async function samplePeerConnections() {
+  const paths = [];
+  for (const pc of [...trackedPcs]) {
+    if (!pc || pc.connectionState === 'closed') { trackedPcs.delete(pc); continue; }
+    if (!['connected','completed'].includes(String(pc.connectionState)) && String(pc.iceConnectionState) !== 'connected' && String(pc.iceConnectionState) !== 'completed') continue;
+    try {
+      const stats = await pc.getStats();
+      let pair = null;
+      stats.forEach(row => {
+        if (row.type === 'candidate-pair' && row.state === 'succeeded' && (row.nominated || !pair)) pair = row;
+      });
+      if (!pair) continue;
+      const local = stats.get(pair.localCandidateId), remote = stats.get(pair.remoteCandidateId);
+      const rttMs = Number.isFinite(Number(pair.currentRoundTripTime)) ? Number(pair.currentRoundTripTime) * 1000 : NaN;
+      const relay = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
+      const protocol = String(local?.protocol || remote?.protocol || '').toUpperCase();
+      const family = candidateFamily(local) || candidateFamily(remote);
+      const localType = String(local?.candidateType || '?');
+      const remoteType = String(remote?.candidateType || '?');
+      paths.push({
+        rttMs,
+        relay,
+        protocol,
+        family,
+        localType,
+        remoteType,
+        networkType:String(local?.networkType || ''),
+        relayProtocol:String(local?.relayProtocol || remote?.relayProtocol || ''),
+      });
+    } catch (_) {}
+  }
+  if (paths.length) {
+    const finite = paths.map(x => x.rttMs).filter(Number.isFinite);
+    const worstRtt = finite.length ? Math.max(...finite) : NaN;
+    const relay = paths.some(x => x.relay);
+    const representative = paths.slice().sort((a,b) => (Number.isFinite(b.rttMs)?b.rttMs:-1) - (Number.isFinite(a.rttMs)?a.rttMs:-1))[0];
+    const route = [
+      `${representative.localType}↔${representative.remoteType}`,
+      representative.protocol,
+      representative.family,
+      representative.relayProtocol ? `via ${representative.relayProtocol}` : '',
+    ].filter(Boolean).join(' · ');
+    updateDiag({
+      transportRttMs:worstRtt,
+      peerRttMs:worstRtt,
+      relay,
+      route,
+      transportPaths:paths,
+      transportSampleAt:Date.now(),
+    });
+    const badge = document.getElementById('p2pTransportStatus');
+    if (badge) {
+      badge.dataset.transportRtt = Number.isFinite(worstRtt) ? String(Math.round(worstRtt)) : '';
+      badge.title = `${route || (relay ? 'TURN relay' : 'WebRTC direct')}${Number.isFinite(worstRtt) ? ` · ICE RTT ${Math.round(worstRtt)} ms` : ''}`;
+    }
+  }
+  setTimeout(samplePeerConnections, document.hidden ? 3000 : 1200);
 }
 
 window.fetch = async function policyFetch(input, init = {}) {
@@ -84,12 +172,28 @@ if (typeof NativePC === 'function') {
       }
       const pool = Number.isInteger(config?.iceCandidatePoolSize) ? config.iceCandidatePoolSize : 4;
       super({ ...config, iceServers, iceCandidatePoolSize:pool });
+      trackedPcs.add(this);
+      this.addEventListener('datachannel', event => tuneDataChannel(event.channel));
+      this.addEventListener('connectionstatechange', () => {
+        if (this.connectionState === 'closed') trackedPcs.delete(this);
+      });
+    }
+    createDataChannel(label, options = {}) {
+      let next = options || {};
+      if (label === 'dtam-fast') {
+        next = { ...next, ordered:false, maxRetransmits:0, priority:'high' };
+        delete next.maxPacketLifeTime;
+      } else if (label === 'dtam-control') {
+        next = { ...next, priority:'high' };
+      }
+      return tuneDataChannel(super.createDataChannel(label, next));
     }
   }
   if (typeof NativePC.generateCertificate === 'function') {
     PolicyRTCPeerConnection.generateCertificate = NativePC.generateCertificate.bind(NativePC);
   }
   window.RTCPeerConnection = PolicyRTCPeerConnection;
+  setTimeout(samplePeerConnections, 1200);
 }
 
 class ServerPolicyWebSocket extends NativeWS {
@@ -111,4 +215,4 @@ Object.defineProperties(ServerPolicyWebSocket, {
   CLOSING:{ value:NativeWS.CLOSING }, CLOSED:{ value:NativeWS.CLOSED },
 });
 window.WebSocket = ServerPolicyWebSocket;
-updateDiag({ serverPolicy:'manual-only', turnAvailable:false, voiceBackend:'cloudflare-edge' });
+updateDiag({ serverPolicy:'manual-only', turnAvailable:false, voiceBackend:'cloudflare-edge', fastChannel:'unordered-unreliable' });
