@@ -52,11 +52,11 @@ excludes(playerCss,'#latencyStatus { display: none','latency must stay visible o
 
 includes(hybrid,"const FAST_OUT=new Set(['pos','ping'])",'P2P position and RTT probes must use the fast channel');
 includes(hybrid,"createDataChannel('dtam-fast',{ordered:false,maxRetransmits:0,priority:'high'})",'fast P2P channel must be unordered, non-retransmitting and high-priority');
-includes(hybrid,'recoverySnapshot','P2P transport must carry recovery snapshots');
+includes(hybrid,'__dtamRecovery','P2P transport must carry recovery snapshots');
 includes(hybrid,'sendSnapshotTo','host must be able to push recovery snapshot to a hot standby');
-includes(worker,"m.t==='meeting_start'",'server worker must handle meetings');
-includes(worker,"m.t==='voice_directory'",'server worker must maintain the voice directory');
-includes(worker,"phase==='playing'||phase==='meeting'",'meeting phase must remain active-game context for ghost isolation');
-includes(server,'phase == "playing" || phase == "meeting"','native server must treat meetings as active-game context');
+includes(worker,'async startMeeting(player','server worker must handle meetings');
+includes(worker,'broadcastVoiceDirectory(){','server worker must maintain the voice directory');
+includes(worker,"this.phase==='playing'||this.phase==='meeting'",'meeting phase must remain active-game context for ghost isolation');
+includes(server,'room.phase == "playing" || room.phase == "meeting"','native server must treat meetings as active-game context');
 
 console.log('[2.8 test] ok');
