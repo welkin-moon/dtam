@@ -51,6 +51,8 @@ function nativeEvent(ctx, event) {
     ctx.nativeOpen = true;
     ctx.pc.__dtamNativeOpen = true;
     ctx.pc.__dtamNativePath = String(event.path || 'native');
+    if (ctx.control) ctx.control.__dtamNativeOpen = true;
+    if (ctx.fast) ctx.fast.__dtamNativeOpen = true;
     api.markActive(true);
     liveNative.set(ctx.nativeId, { open:true, path:String(event.path || 'native'), rttMs:NaN });
     emitQuality();
@@ -69,7 +71,7 @@ function nativeEvent(ctx, event) {
   }
   if (event.event === 'message' && ctx.nativeOpen) {
     const ch = event.channel === 'fast' ? ctx.fast : ctx.control;
-    if (ch?.readyState === 'open') {
+    if (ch) {
       try { ch.dispatchEvent(new MessageEvent('message', { data:String(event.data ?? ''), origin:location.origin })); }
       catch (e) { console.warn('[DTAM native dispatch]', e); }
     }
@@ -87,6 +89,8 @@ function cleanupNative(ctx) {
   ctx.nativeOpen = false;
   ctx.pc.__dtamNativeOpen = false;
   ctx.pc.__dtamNativeRttMs = NaN;
+  if (ctx.control) ctx.control.__dtamNativeOpen = false;
+  if (ctx.fast) ctx.fast.__dtamNativeOpen = false;
   emitQuality();
 }
 
@@ -139,6 +143,8 @@ function acceptAnswer(ctx, msg) {
 function protocolMessage(ctx, event) {
   const msg = parse(event.data);
   if (msg?.__dtamNative !== 1) return;
+  // This protocol is consumed below the game layer. A normal browser loads this
+  // module too, so wrapper capability probes never leak into GameRoom packets.
   event.stopImmediatePropagation?.();
   if (msg.op === 'cap') {
     if (msg.available === true) {
@@ -155,6 +161,7 @@ function protocolMessage(ctx, event) {
 function maybeReady(ctx) {
   if (ctx.capSent || ctx.control?.readyState !== 'open' || ctx.fast?.readyState !== 'open') return;
   ctx.capSent = true;
+  // All clients have the interceptor, but only wrappers advertise native support.
   if (api?.available) wireSend(ctx, { __dtamNative:1, op:'cap', v:1, available:true, host:api.host });
 }
 
@@ -175,6 +182,8 @@ function trackChannel(ctx, ch) {
   if (kind === 'control') ch.addEventListener('message', event => protocolMessage(ctx, event));
   ch.addEventListener('open', () => maybeReady(ctx));
   ch.addEventListener('close', () => {
+    // Keep native teardown tied to the PeerConnection lifecycle. Existing hybrid
+    // close semantics stay authoritative, so a failed upgrade always falls back.
     if (ctx.pc.connectionState === 'closed') cleanupNative(ctx);
   });
   queueMicrotask(() => maybeReady(ctx));
