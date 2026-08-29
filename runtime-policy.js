@@ -52,8 +52,6 @@ function tuneDataChannel(channel) {
     try { channel.bufferedAmountLowThreshold = 512; } catch (_) {}
     const nativeSend = channel.send.bind(channel);
     channel.send = function dtamFastSend(data) {
-      // Position packets are disposable state. Never let stale coordinates sit behind
-      // a growing SCTP send queue: the next packet is always more useful than this one.
       if (channel.readyState === 'open' && Number(channel.bufferedAmount || 0) > 4096) {
         fastDropCount += 1;
         updateDiag({ fastDrops:fastDropCount, fastBufferedAmount:Number(channel.bufferedAmount || 0) });
@@ -63,6 +61,19 @@ function tuneDataChannel(channel) {
     };
   }
   return channel;
+}
+
+function paintTransportRtt(rttMs, route, relay) {
+  if (!Number.isFinite(rttMs)) return;
+  const el = document.getElementById('latencyStatus');
+  if (!el) return;
+  const r = Math.max(0, Math.round(rttMs));
+  const q = r < 40 ? 'good' : r < 90 ? 'fair' : r < 180 ? 'poor' : 'bad';
+  el.textContent = `${r} ms`;
+  el.dataset.quality = q;
+  el.dataset.rtt = String(r);
+  el.dataset.path = relay ? 'TURN' : 'P2P';
+  el.title = `${relay ? 'TURN 中继' : 'P2P 直连'} · ${route || 'WebRTC'} · ICE RTT ${r} ms`;
 }
 
 async function samplePeerConnections() {
@@ -111,10 +122,12 @@ async function samplePeerConnections() {
       transportRttMs:worstRtt,
       peerRttMs:worstRtt,
       relay,
+      pair:`${representative.localType} ↔ ${representative.remoteType} · ${representative.protocol.toLowerCase()}`,
       route,
       transportPaths:paths,
       transportSampleAt:Date.now(),
     });
+    paintTransportRtt(worstRtt, route, relay);
     const badge = document.getElementById('p2pTransportStatus');
     if (badge) {
       badge.dataset.transportRtt = Number.isFinite(worstRtt) ? String(Math.round(worstRtt)) : '';
