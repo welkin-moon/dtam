@@ -262,3 +262,23 @@ html:not(.dtam-debug) #networkDiagBtn {
   #joystick { width: 90px !important; }
   #gameToast { max-width: 44vw !important; }
 }
+
+/* DTAM UX FLOW 20260829 */
+#game.lobby-visible #lobbyPanel.show,
+#game:has(#lobbyPanel.show) #lobbyPanel.show {
+  width: min(760px, calc(100vw - 28px)) !important;
+  max-height: calc(100dvh - max(72px, env(safe-area-inset-top) + 66px) - max(10px, env(safe-area-inset-bottom))) !important;
+  padding: 20px !important;
+}
+@media (max-width:900px), (max-height:600px) and (orientation:landscape) {
+  #game.lobby-visible #lobbyPanel.show,
+  #game:has(#lobbyPanel.show) #lobbyPanel.show {
+    width: min(720px, calc(100vw - max(14px, env(safe-area-inset-left)) - max(14px, env(safe-area-inset-right)))) !important;
+    padding: 12px !important;
+  }
+  #lobbyStartBar { bottom: -12px; margin: 10px -12px -12px; padding: 8px 12px max(8px, env(safe-area-inset-bottom)); }
+  #lobbyPlayerList { grid-template-columns: repeat(3, minmax(0,1fr)); }
+}
+@media (max-width:640px) {
+  #lobbyPlayerList { grid-template-columns: 1fr; }
+}

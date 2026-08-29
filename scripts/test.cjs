@@ -6,6 +6,7 @@ const headers=fs.readFileSync('_headers','utf8');
 const hybrid=fs.readFileSync('hybrid-transport.js','utf8');
 const playerCss=fs.readFileSync('player-shell.css','utf8');
 const worker=fs.readFileSync('worker.js','utf8');
+const polish=fs.readFileSync('game-polish.js','utf8');
 
 function assert(condition,message){if(!condition)throw new Error(`[2.8 test] ${message}`);}
 function includes(haystack,needle,message){assert(haystack.includes(needle),message);}
@@ -37,7 +38,7 @@ includes(src,"const REMOTE_SMOOTHING_RELAY = 26",'relay smoothing must avoid exc
 includes(src,"function remoteSmoothingRate()",'remote smoothing must adapt to the selected path');
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
-includes(html,'/styles.css?v=20260824-direct-m3e1','current cache-busted stylesheet must be loaded');
+includes(html,'/styles.css?v=20260829-ux1','current UX cache-busted stylesheet must be loaded');
 includes(html,'/hybrid-transport.js?v=20260824-direct-m3e1','current transport entry must be loaded');
 excludes(headers,'immutable','runtime assets must never pin mixed protocol versions');
 includes(headers,'Cache-Control: no-cache, max-age=0, must-revalidate','runtime assets must revalidate');
@@ -48,6 +49,19 @@ excludes(css,'.voice-sink{display:none!important}','remote audio must never be r
 includes(css,'#actionStack #killBtn { order: 5;','kill button position must be stable');
 includes(css,'#actionStack #reportBtn { order: 6;','report must not replace kill under the finger');
 excludes(playerCss,'#latencyStatus { display: none','latency must stay visible on compact devices');
+includes(src,'id="lobbyInviteBtn"','lobby must expose a first-class invite action');
+includes(src,'data-rule-preset="classic"','lobby must expose playable rule presets');
+includes(src,'function applyRulePreset(name)','rule presets must be functional, not decorative');
+includes(src,'value="15" selected>15 秒</option>','default discussion time must exist and show units');
+includes(src,'function handleGameShortcut(e)','desktop gameplay shortcuts must be wired');
+includes(src,'const PLAYER_VISUAL_RADIUS = 0.56','player sprites must have a readable visual size without changing collision radius');
+includes(src,'function drawObjectiveHint(view,p)','offscreen tasks and urgent repairs must have direction guidance');
+includes(src,"label=pl.id===myPlayerId?'你':shown.name",'the local player label must stay concise in crowded spawns');
+includes(hybrid,"game.js?v=20260829-ux1",'transport must load the current gameplay UX bundle');
+includes(hybrid,"game-polish.js?v=20260829-ux1",'transport must load the current polish bundle');
+includes(playerCss,'DTAM UX FLOW 20260829','player shell must include the current lobby layout layer');
+excludes(polish,'stopImmediatePropagation()','typing, shortcuts, and IME input must not be swallowed by a capture guard');
+includes(polish,"u.searchParams.set('room',code)",'copied invite links must carry the room code');
 
 includes(hybrid,"const FAST_OUT=new Set(['pos','ping'])",'P2P position and RTT probes must use the fast channel');
 includes(hybrid,"createDataChannel('dtam-fast',{ordered:false,maxRetransmits:0,priority:'high'})",'fast P2P channel must be unordered, non-retransmitting and high-priority');

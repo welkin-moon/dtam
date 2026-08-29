@@ -332,8 +332,8 @@ function installNetworkDiagnostics(){
 function installInviteCopy(){
   const room=document.getElementById('roomIdDisplay'),more=document.getElementById('hudMoreMenu');
   if(!room||!more||document.getElementById('copyInviteBtn'))return;
-  const btn=document.createElement('button');btn.type='button';btn.id='copyInviteBtn';btn.textContent='复制邀请';btn.title='复制房间号和游戏地址';
-  btn.onclick=async()=>{const code=room.textContent?.trim()||'--';if(!/^\d{2}$/.test(code))return;const text=`Among Us 东滩版\n房间 ${code}\nhttps://d1.lunarlab.uk/`;try{await navigator.clipboard.writeText(text);btn.textContent='已复制';setTimeout(()=>btn.textContent='复制邀请',1200)}catch(_){prompt('复制邀请信息',text)}};
+  const btn=document.createElement('button');btn.type='button';btn.id='copyInviteBtn';btn.textContent='复制邀请';btn.title='复制可直接带入房号的邀请链接';
+  btn.onclick=async()=>{const code=room.textContent?.trim()||'--';if(!/^\d{2}$/.test(code))return;const u=new URL(location.href);u.search='';u.hash='';u.searchParams.set('room',code);const text=`Among Us 东滩版 · 房间 ${code}\n${u}`;try{await navigator.clipboard.writeText(text);btn.textContent='已复制 ✓';setTimeout(()=>btn.textContent='复制邀请',1200)}catch(_){prompt('复制邀请信息',text)}};
   more.insertBefore(btn,more.lastElementChild);
 }
 
@@ -341,8 +341,6 @@ function isTypingTarget(t){return t instanceof HTMLInputElement||t instanceof HT
 function installInputSafety(){
   const clearMovement=()=>{try{window.dispatchEvent(new Event('blur'))}catch(_){}};
   document.addEventListener('focusin',e=>{if(isTypingTarget(e.target))clearMovement()});
-  document.addEventListener('keydown',e=>{if(isTypingTarget(e.target)&&e.key!=='Escape')e.stopImmediatePropagation()},true);
-  document.addEventListener('keyup',e=>{if(isTypingTarget(e.target)&&e.key!=='Escape')e.stopImmediatePropagation()},true);
 }
 
 function installTaskFailureRecovery(){
