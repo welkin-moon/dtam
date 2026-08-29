@@ -77,6 +77,7 @@ function paintTransportRtt(rttMs, route, relay) {
 }
 
 async function samplePeerConnections() {
+  if (window.__DTAM_NET__?.nativeActive) { setTimeout(samplePeerConnections, document.hidden ? 3000 : 1200); return; }
   const paths = [];
   for (const pc of [...trackedPcs]) {
     if (!pc || pc.connectionState === 'closed') { trackedPcs.delete(pc); continue; }
