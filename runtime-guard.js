@@ -1,5 +1,30 @@
 const TASK_LOAD_TIMEOUT_MS = 6000;
 const ACTIVE_ROOM_KEY = 'au-dtam-active-room-v1';
+const CONNECT_TIMEOUT_FROM_MS = 20000;
+const CONNECT_TIMEOUT_TO_MS = 36000;
+
+function installConnectTimeoutBudget() {
+  if (window.__DTAM_CONNECT_TIMEOUT_BUDGET__) return;
+  const nativeSetTimeout = window.setTimeout.bind(window);
+  window.setTimeout = function dtamBudgetedSetTimeout(handler, timeout = 0, ...args) {
+    let delay = Number(timeout);
+    if (delay === CONNECT_TIMEOUT_FROM_MS && typeof handler === 'function') {
+      let source = '';
+      try { source = Function.prototype.toString.call(handler); } catch (_) {}
+      if (source.includes('连接超时，请稍后重试') && source.includes('socketGeneration')) {
+        delay = CONNECT_TIMEOUT_TO_MS;
+      }
+    }
+    return nativeSetTimeout(handler, delay, ...args);
+  };
+  window.__DTAM_CONNECT_TIMEOUT_BUDGET__ = {
+    fromMs: CONNECT_TIMEOUT_FROM_MS,
+    toMs: CONNECT_TIMEOUT_TO_MS,
+    reason: 'TURN mailbox handshake budget',
+  };
+}
+
+installConnectTimeoutBudget();
 
 function installVoiceFetchRetry() {
   if (window.__DTAM_VOICE_FETCH_RETRY__) return;
