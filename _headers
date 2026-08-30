@@ -5,7 +5,7 @@
   Permissions-Policy: camera=(), microphone=(self), geolocation=()
   Cross-Origin-Opener-Policy: same-origin
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-ICua1Pkj7iy2q84/E06z204+/0+FCjTSCv5NqkOMtCs='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://p2p-signal.lunarlab.uk https://voice.lunarlab.uk wss: ws: https://rt-d1.lunarlab.uk https://edge-d1.lunarlab.uk; media-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-ICua1Pkj7iy2q84/E06z204+/0+FCjTSCv5NqkOMtCs='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://p2p-signal.lunarlab.uk https://p2p-bell.lunarlab.uk wss://p2p-bell.lunarlab.uk https://voice.lunarlab.uk wss: ws: https://rt-d1.lunarlab.uk https://edge-d1.lunarlab.uk; media-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
 
 /index.html
   Cache-Control: no-cache
@@ -32,6 +32,18 @@
   Cache-Control: no-cache, max-age=0, must-revalidate
 
 /p2p-resilience.js
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/p2p-doorbell-bootstrap.js
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/p2p-doorbell-host.js
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/p2p-stability-guard.js
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/minimap-hud.js
   Cache-Control: no-cache, max-age=0, must-revalidate
 
 /game-polish.js
