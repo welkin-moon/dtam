@@ -1,7 +1,11 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 const string Home = "https://d1.lunarlab.uk/";
+
+[DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+static extern int MessageBoxW(nint hWnd, string text, string caption, uint type);
 
 static string ResolveEdge()
 {
@@ -28,20 +32,14 @@ static string BuildUrl(string[] args)
 
 try
 {
-    var url = BuildUrl(args);
-    var edge = ResolveEdge();
     Process.Start(new ProcessStartInfo
     {
-        FileName = edge,
+        FileName = ResolveEdge(),
         UseShellExecute = true,
-        Arguments = $"--app=\"{url}\" --start-maximized --no-first-run"
+        Arguments = $"--app=\"{BuildUrl(args)}\" --start-maximized --no-first-run"
     });
 }
 catch (Exception ex)
 {
-    System.Windows.Forms.MessageBox.Show(
-        "无法启动 Microsoft Edge。\n\n" + ex.Message + "\n\n也可以直接访问 " + Home,
-        "DTAM",
-        System.Windows.Forms.MessageBoxButtons.OK,
-        System.Windows.Forms.MessageBoxIcon.Error);
+    MessageBoxW(0, "无法启动 Microsoft Edge。\n\n" + ex.Message + "\n\n也可以直接访问 " + Home, "DTAM", 0x10);
 }
