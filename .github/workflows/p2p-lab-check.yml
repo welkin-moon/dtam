@@ -23,6 +23,11 @@ jobs:
           cp p2p-resilience.js /tmp/p2p-resilience.mjs
           cp game-polish.js /tmp/game-polish.mjs
           cp p2p-game-room-patch.js /tmp/p2p-game-room-patch.mjs
+          cp p2p-authority-clock.js /tmp/p2p-authority-clock.mjs
+          cp voice-pc-close-guard.js /tmp/voice-pc-close-guard.mjs
+          cp runtime-guard.js /tmp/runtime-guard.mjs
+          cp native-bridge.js /tmp/native-bridge.mjs
+          cp native-transport-upgrade.js /tmp/native-transport-upgrade.mjs
           cp workers/p2p-signal-v2.js /tmp/p2p-signal-v2.mjs
           node --check /tmp/net-config.mjs
           node --check /tmp/signal-budget.mjs
@@ -32,11 +37,21 @@ jobs:
           node --check /tmp/p2p-resilience.mjs
           node --check /tmp/game-polish.mjs
           node --check /tmp/p2p-game-room-patch.mjs
+          node --check /tmp/p2p-authority-clock.mjs
+          node --check /tmp/voice-pc-close-guard.mjs
+          node --check /tmp/runtime-guard.mjs
+          node --check /tmp/native-bridge.mjs
+          node --check /tmp/native-transport-upgrade.mjs
           node --check /tmp/p2p-signal-v2.mjs
-      - name: Guard player-facing UX
+          node --check game.js
+          node scripts/test.cjs
+      - name: Guard player-facing UX and production domains
         run: |
-          grep -q '/player-shell.css?v=player-1' index.html
+          grep -q '/player-shell.css?v=' index.html
+          grep -q '/p2p-authority-clock.js?v=' index.html
+          grep -q '/voice-pc-close-guard.js?v=' index.html
           ! grep -E 'P2P Lab|TURN 中继|家庭 Server|选择联机方式' index.html
+          ! grep -E 'https://[^"[:space:]]*\.workers\.dev' index.html runtime-policy.js hybrid-transport.js p2p-resilience.js game.js
           grep -q 'debugUiEnabled' net-config.js
           grep -q '#actionStack #interactBtn' player-shell.css
           grep -q 'position: static !important' player-shell.css
