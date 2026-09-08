@@ -5,6 +5,10 @@ const VOICE_HOST = 'voice.lunarlab.uk';
 const OLD_VOICE_HOST = 'rt-d1.lunarlab.uk';
 const NativePC = window.RTCPeerConnection;
 const NativeWS = window.WebSocket;
+// Preserve the actual browser WebSocket before the Server-only policy wrapper
+// replaces window.WebSocket. The P2P doorbell is an independent signalling
+// accelerator and must remain usable in Auto/P2P mode.
+if (!window.__DTAM_NATIVE_WEBSOCKET__) window.__DTAM_NATIVE_WEBSOCKET__ = NativeWS;
 const NativeFetch = window.fetch.bind(window);
 const trackedPcs = new Set();
 let turnIceServers = [];
