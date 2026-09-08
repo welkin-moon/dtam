@@ -1,0 +1,17 @@
+{
+  "name": "dtam-update",
+  "main": "update-proxy.js",
+  "compatibility_date": "2026-08-30",
+  "kv_namespaces": [
+    {
+      "binding": "DTAM_UPDATES",
+      "id": "449ee95eb3ff4051ae887fc7a4519c78"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "update.lunarlab.uk",
+      "custom_domain": true
+    }
+  ]
+}

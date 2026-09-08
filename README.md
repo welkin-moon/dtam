@@ -1,94 +1,126 @@
 # Among Us · 东滩版
 
-一个面向浏览器的实时多人社交推理小游戏。
+一个面向浏览器与轻量原生壳的实时多人社交推理小游戏。
 
 > 本项目是非官方同人实现，与 Innersloth 无隶属关系；请勿将其误认为官方 Among Us 客户端或服务。
 
-## 当前开发版本
+## 在线游玩
 
-**v3（基于 v2.8 的新一代；不是历史上的旧 v3）**
+正式网页：`https://d1.lunarlab.uk/`
 
-v3 保留 v2.8 已加固的 Rust 权威游戏核心，在它前面新增一个轻量 Rust Edge 网络层：浏览器先通过 Cloudflare Tunnel 完成加入房间与 WebRTC 信令，ICE/DataChannel 建链成功后，实时游戏流量优先直接到中心节点；直连失败或中断时自动回落到 Tunnel。
+网页是游戏的 canonical client。Windows 与 Android 客户端都复用同一套网页游戏与协议，因此规则、地图和联机修复会随线上前端同步生效。
+
+## 当前版本：v3.0.1
+
+v3 的默认 Auto 联机已经不是早期实验文档中的“浏览器 → Rust Edge → Rust Core”路径。当前首选路径是浏览器房主权威 + WebRTC DataChannel：创建房间的客户端承载权威 `GameRoom`，其他玩家优先与房主建立 WebRTC 数据通道；Cloudflare 负责静态站点、建链信令/doorbell、受限网络下的 TURN，以及原有 Server 路径的兜底能力。
 
 ```text
-Cloudflare Pages
-      |
-      v
-   Browser
-      |\
-      | \ WebRTC DataChannel direct
-      |  +----------------------------+
-      |                               v
-      +-- WSS / Cloudflare Tunnel --> dtam-edge v3
-                                      |
-                                      | loopback WebSocket
-                                      v
-                                 dtam-server v2.8
-                                 authoritative core
+                       Cloudflare Pages
+                             |
+                 +-----------+-----------+
+                 |                       |
+                 v                       v
+           Browser / APK            Windows client
+                 |                       |
+                 +-----------+-----------+
+                             |
+                             v
+                    canonical web game
+                             |
+             create room     |     join room
+                 +-----------+-----------+
+                 |                       |
+                 v                       v
+          Browser-host authority <---- WebRTC ----> Guest
+                 ^                 control + fast
+                 |
+       Cloudflare signaling / doorbell
+       TURN only when direct ICE cannot work
+
+       Server mode / Auto fallback remains available
+       Voice remains on Cloudflare Realtime/Calls
 ```
 
-- **不是玩家之间 mesh P2P。** Rust 中心节点仍然是唯一权威状态机。
-- `dtam-control` 使用 ordered/reliable DataChannel 传输动作、聊天、任务、投票等可靠消息。
-- `dtam-fast` 使用 **ordered + `maxRetransmits=0`** 传输位置/心跳：不重传已经过期的旧采样，同时避免同一 fast stream 内出现“新坐标先于旧坐标”的时间倒流。
-- v2.8 的 `flushPosition()` 顺序语义被保留：击杀、报告、任务、能力、紧急会议、通风管、修复等距离敏感动作，在 direct 模式下会把最近位置和动作连续写入同一 reliable control stream；不能安全写入 control 时，两者一起走同一 WSS fallback。
-- 同一 LAN 内的浏览器可以通过 ICE host candidate 直接使用当前 `10.x` / `172.16-31.x` / `192.168.x` 地址，不需要公网回环。
-- 服务端 IPv4、IPv6、NAT 映射都视为动态路径信息：每次 RTC 协商重新枚举当前 Up 网卡地址并重新做 STUN，不把地址写入节点身份或持久配置。
-- NAT/状态防火墙环境下由 ICE 双向 connectivity checks 尝试建立可用 UDP 路径，不依赖路由器 IPv4 “DMZ 主机”作为核心机制。
-- DataChannel 中断但 Tunnel 仍连接时，只重建 WebRTC transport，不重新加入 Core 房间；浏览器和 Edge 都使用 RTC generation fencing，旧路径的晚到 close/answer 不会污染新路径。
-- Edge 的 STUN/ICE gather 在独立任务中完成，不阻塞 WSS fallback 的浏览器→Core 消息转发；fast 队列拥塞时直接丢弃过期采样，而不是反压可靠控制流。
-- Tunnel 在直连成功后临时掉线也不会主动杀掉仍健康的直连。
-- v3 Edge 不可用时，浏览器还会最终回落到原来的 `wss://rt-d1.lunarlab.uk/ws` v2.8 路径。
-- 浏览器 endpoint 列表与 Edge `node_id` 已为后续双服务端路由预留接口；v3.0 本身仍是单权威节点。
-- Cloudflare Realtime/Calls SFU 继续承载现有语音媒体；v3 DataChannel 只负责游戏实时消息。
-- 修复 v2.8 开局重新分配 spawn 后客户端继续保留旧 `myPos` 所造成的多客户端坐标世界不一致；普通移动仍保留本地预测。
-- Windows 新增 **native Rust 托盘 companion**，显示 Core/Edge 状态、Edge 会话数和当前 IPv4/IPv6；托盘运行于登录用户会话，后台 Core/Edge 仍由 SYSTEM 自启。
+联机数据面分为两条 DataChannel：
 
-完整设计见 [`docs/V3-ARCHITECTURE.md`](docs/V3-ARCHITECTURE.md)。
+- `dtam-control`：ordered / reliable，用于任务、击杀、报告、会议、聊天、设置等需要可靠顺序的消息。
+- `dtam-fast`：unordered / `maxRetransmits=0` / high priority，用于位置和 RTT 探针。过期位置不会因为重传堵住后续输入。
+- Auto 首选浏览器房主 P2P；网络限制时 ICE 可以选中 TURN relay；P2P 建链不可用时仍保留 Server fallback。
+- 创建/加入房间使用 Cloudflare 信令。doorbell WebSocket 是即时唤醒路径，D1/HTTP 轮询只作为后备，不参与正常游戏中的高频位置同步。
+- 语音仍使用 Cloudflare Realtime/Calls，与游戏 DataChannel 分离。
 
-## v2.8 生产基线
+v3.0.1 进一步把直接链路位置更新目标提升到约 50 Hz，并直接读取 WebRTC selected candidate pair 的 RTT/候选类型来判断真实直连还是 TURN；高 RTT 不再反向降低 direct 位置发送频率。远端角色使用有界速度外推和平滑收敛，避免高 RTT 下既慢半拍又抖动。
 
-在 v3 完成主机部署验证前，现网仍是 **Cloudflare Pages 静态前端 + Cloudflare Tunnel + 自托管 Rust v2.8 实时服务端 + Cloudflare Realtime SFU 语音**。v3 分支不会删除这条回退路径。
+Web 主循环也改为每个 equestAnimationFrame 都更新/绘制，不再人为按 72 Hz 门槛跳帧；在 90/120/144 Hz 屏幕上会直接跟随显示刷新率。150×150 静态墙体先缓存到离屏 Canvas，避免高刷模式下每帧重扫碰撞格。
 
-v2.8 已有的关键加固继续作为 v3 游戏核心基线：
+## 地图与碰撞
 
-- 两位数字房间号（10–99），浏览器和服务端都严格校验。
-- `d1.lunarlab.uk` 由 Cloudflare Pages 托管静态页面。
-- `rt-d1.lunarlab.uk` 通过 Cloudflare Tunnel 进入 Rust/Axum 核心，不再让 Workers / Durable Objects 承担生产实时消息。
-- WebSocket 单消息/单帧上限 16 KiB、每连接应用消息上限 60/s、发送队列有界、总并发上限 256、同 IP 并发上限 32；90 秒无活动连接由核心回收。
-- resume token 在成功恢复会话后立即轮换。
-- WebSocket 与语音 API 校验网页 Origin；Calls session 与房间/玩家绑定。
-- 房间快照存放在 `D:\server\data\rooms`，采用临时文件 + 备份恢复并把持久化 I/O 移出实时房间锁。
+权威地图协议为 `dtam-map-150-v1`，碰撞、服务端/浏览器权威判定、主场景墙体和完整小地图现在都直接使用同一份 150×150 网络碰撞网格。
+
+旧版曾为了显示把 150×150 地图按中心点降采样成 100×100；一格宽的障碍可能被采样漏掉，于是出现“能撞到、小地图也有，但主画面没画出来”。v3.0.1 删除了这条渲染不一致：主画面直接绘制权威格，小地图 HUD 的静态墙层也缓存到离屏 Canvas，避免每 250 ms 重画 22,500 个格子。
+
+## 可选客户端
+
+### Windows x64
+
+`client/windows/` 是 .NET 8 自包含单文件启动器。它使用 Microsoft Edge app mode 打开 canonical web client；例如：
+
+```text
+DTAM.exe 45
+```
+
+会直接打开房间 `45`。Windows 客户端本身不伪装成另一套游戏实现，也不声称当前已有 native UDP 加速；WebRTC/Server 路径仍由网页 transport 负责。
+
+v3.0.1 起启动器会在不阻塞游戏启动的前提下检查 `https://update.lunarlab.uk/latest.json`。发现新版本后，从 Cloudflare 下载新的 EXE，校验大小与 SHA-256，通过后在当前进程退出后替换自身。更新服务不可用时直接继续游戏。
+
+### Android
+
+`client/android/` 是无第三方运行时依赖的系统 WebView APK：
+
+- package：`uk.lunarlab.dtam`
+- minSdk 26，targetSdk 35
+- 仅在 `https://d1.lunarlab.uk` 原点允许 WebRTC 麦克风请求
+- 支持网页链接与 `dtam://join?room=45` 深链
+- 禁止明文网络、file/content WebView 访问和 mixed content
+
+APK 同样从 `update.lunarlab.uk` 检查新版本，下载后验证 SHA-256，再交给 Android `PackageInstaller`。普通侧载 APK 无权静默安装更新；首次需要允许“安装未知应用”，每次系统认为需要用户确认时也会进入 Android 自己的安装确认界面。
+
+Android 构建不依赖 Android Gradle Plugin：`scripts/build-android.ps1` 直接使用已安装的 `aapt2`、`javac`、`d8`、`zipalign` 与 `apksigner`，并使用项目维护者机器上独立保存、不会进入仓库的发布签名密钥。
+
+## Cloudflare 自更新服务
+
+更新入口：`https://update.lunarlab.uk/latest.json`
+
+客户端只信任 `update.lunarlab.uk` 的 HTTPS 下载地址，并在安装/替换前再次验证清单中的 SHA-256 与文件大小。大文件以固定版本 key 分块保存在 Cloudflare Workers KV，Worker 流式拼接返回；`latest.json` 最后写入，作为原子的“当前版本指针”。
+
+发布新客户端资产使用 `scripts/publish-update-assets.ps1`。脚本先上传所有版本化分块，最后才覆盖 `latest.json`，因此上传中断不会让用户拿到半个新版本。
 
 ## 仓库结构
 
 ```text
 .
 ├── index.html
-├── game.js                    # v2.8 gameplay client / protocol
-├── v3-bootstrap.js            # v3 WebSocket/DataChannel transport facade
-├── v3-resilience.js           # fallback、动态网络/ICE replacement、RTC generation fencing
-├── styles.css
-├── _headers
-├── server/
-│   ├── Cargo.toml
-│   ├── Cargo.lock
-│   ├── config.example.json
-│   └── src/main.rs            # v2.8 authoritative Rust core
-├── edge/
-│   ├── Cargo.toml
-│   ├── config.example.json
-│   └── src/main.rs            # v3 WebRTC Edge / Tunnel gateway
-├── tray/
-│   ├── Cargo.toml
-│   └── src/main.rs            # native Windows notification-area companion
+├── game.js                         # canonical gameplay / rendering / client prediction
+├── hybrid-transport.js             # Auto / browser-host P2P / Server transport
+├── p2p-doorbell-bootstrap.js
+├── p2p-doorbell-host.js
+├── minimap-hud.js
+├── worker.js                       # browser-host authoritative GameRoom implementation
+├── client/
+│   ├── windows/                    # optional self-contained Windows launcher
+│   └── android/                    # optional Android WebView APK
+├── workers/
+│   ├── update-proxy.js             # update.lunarlab.uk Worker
+│   └── wrangler.update.jsonc
 ├── scripts/
 │   ├── test.cjs
-│   └── install-v3.ps1         # one-shot Windows install/upgrade helper
-├── docs/V3-ARCHITECTURE.md
-├── worker.js                   # v2.7 legacy rollback，不在生产请求路径
+│   ├── build-android.ps1
+│   └── publish-update-assets.ps1
+├── server/                         # retained Server-mode Rust core
+├── edge/                           # retained native Edge experiments / Server infrastructure
+├── tray/                           # Windows server-side tray companion
 ├── CHANGELOG.md
-├── LICENSE
-└── .github/workflows/ci.yml
+└── LICENSE
 ```
 
 ## 本地检查
@@ -97,71 +129,33 @@ v2.8 已有的关键加固继续作为 v3 游戏核心基线：
 
 ```bash
 node --check game.js
-node --check v3-bootstrap.js
-node --check v3-resilience.js
-cp worker.js /tmp/dtam-worker.mjs && node --check /tmp/dtam-worker.mjs
+node --check hybrid-transport.js
+node --check minimap-hud.js
+node --check minimap-hud-late.js
 node scripts/test.cjs
 ```
 
-v2.8 权威 Core：
+Windows 客户端：
 
-```bash
-cargo fmt --manifest-path server/Cargo.toml -- --check
-cargo clippy --manifest-path server/Cargo.toml --all-targets --locked -- -D warnings
-cargo test --manifest-path server/Cargo.toml --locked
-cargo build --manifest-path server/Cargo.toml --release --locked
+```powershell
+dotnet publish client\windows\DTAM.Client.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 ```
 
-v3 Edge：
+Android 客户端：
 
-```bash
-cargo generate-lockfile --manifest-path edge/Cargo.toml
-cargo fmt --manifest-path edge/Cargo.toml -- --check
-cargo clippy --manifest-path edge/Cargo.toml --all-targets --locked -- -D warnings
-cargo test --manifest-path edge/Cargo.toml --locked
-cargo build --manifest-path edge/Cargo.toml --release --locked
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-android.ps1
 ```
 
-v3 Windows 托盘在 Windows x64 CI 上执行 `rustfmt --check` 与 release build；Linux CI 同时生成其 lockfile 并执行 RustSec。
+Server/Edge 代码仍可独立使用各自 Cargo manifest 执行 `cargo fmt`、`cargo clippy`、`cargo test` 与 release build。
 
-## v3 部署目标
+## 信任边界
 
-生产机目标目录仍全部放在 `D:\server`：
+浏览器房主模式的房主是该房间的实时权威状态机；客户端仍会执行地图碰撞、速度、视线、任务、击杀、投票与角色状态校验，而普通 guest 不能直接修改权威状态。需要不信任房主的部署场景时应使用 Server 模式。
 
-```text
-D:\server\bin\dtam-server.exe
-D:\server\bin\dtam-edge.exe
-D:\server\bin\dtam-tray.exe
-D:\server\config\server.json
-D:\server\config\edge.json
-D:\server\data\rooms\
-D:\server\logs\
-```
+无论哪种游戏数据路径，客户端自更新都不会直接执行未经验证的下载：Windows 与 Android 均限制为 Cloudflare 更新域名，并校验版本清单提供的 SHA-256/大小。
 
-建议进程模型：
-
-- `DTAM Rust Server`：SYSTEM / AtStartup，现有权威 Core。
-- `DTAM v3 Edge`：SYSTEM / AtStartup，新 WebRTC Edge。
-- `DTAM v3 Tray`：登录用户 `meteo` / AtLogOn，native Rust 通知区 companion；使用 Win32 GUI subsystem，不常驻 PowerShell/CLR。
-- `Cloudflared`：继续作为 Windows Automatic service。
-
-Core TCP 端口 `28727` 继续只监听 loopback。Edge 的 HTTP/WSS 信令入口 `28729` 也只给本机 Cloudflared；真正的直连使用 Edge 的 WebRTC UDP sockets，因此 Windows 防火墙按 **`dtam-edge.exe` 程序**允许入站 UDP，而不是公开 Core TCP 端口或绑定某个会变化的 IP。
-
-`edge-d1.lunarlab.uk` 计划由现有 Cloudflare Tunnel 转发到 `http://127.0.0.1:28729`。浏览器始终保留 `rt-d1.lunarlab.uk` 最终回退。
-
-## Cloudflare 使用边界
-
-纯 Pages 静态资源请求属于免费且不限请求量的静态资产流量；Pages Functions 才会计入 Workers 配额。v2.8/v3 的生产实时游戏消息不经过 Worker/DO，因此旧 Durable Objects Free 请求额度不再是实时同步瓶颈。
-
-Cloudflare Realtime SFU 的语音用量仍是独立额度。Tunnel 在 v3 中主要承担信令和 fallback；当 DataChannel 直连成功后，高频位置数据不再必须经过 Cloudflare Tunnel。
-
-## 隐私与信任边界
-
-游戏 Core 继续负责位置合法性、墙体/速度校验、击杀/任务/投票状态以及幽灵隐私。WebRTC 直连只替换传输路径，不扩大浏览器的游戏权限。普通游戏中的死亡玩家文字只投递给死亡连接；语音目录按接收者过滤，Calls 远端音轨订阅仍由 Rust 代理重新校验。
-
-v3 Edge 继续执行正式网页 Origin 校验、128 KiB signaling message/frame 上限、16 KiB game message 上限、总会话上限和有界队列；Cloudflare 传入的客户端 IP 经校验后转发给 loopback Core，保持原有 per-IP 限流语义。
-
-Calls App secret 只保存在本机锁定的 `server.json`，**禁止提交到仓库**。`edge.json` 只包含节点与网络策略，不保存探测到的公网/内网 IPv4 或 IPv6，也不需要复制 Calls secret。
+Calls/Realtime、Server 配置和任何凭据都不得提交到仓库。Android 发布签名私钥同样只保存在维护者机器的仓库外目录。
 
 ## License
 

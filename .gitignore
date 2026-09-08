@@ -4,4 +4,8 @@
 /edge/target/
 /edge/config.json
 /tray/target/
+/client/android/.build/
+/client/windows/bin/
+/client/windows/obj/
+/dist/
 *.pdb

@@ -8,7 +8,7 @@ async function installWhenReady() {
     // The first minimap-hud module may execute while hybrid-transport is still
     // awaiting game.js. Importing it under a second module URL re-runs only the
     // DOM installer; its WebSocket tap is protected by a global one-time flag.
-    await import('./minimap-hud.js?v=20260830-minimap1&late=1');
+    await import('./minimap-hud.js?v=20260908-v301perf1&late=1');
     try { window.dispatchEvent(new Event('resize')); } catch (_) {}
     return !!document.getElementById('dtamMiniHud');
   } catch (error) {

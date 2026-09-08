@@ -1,49 +1,40 @@
 # Changelog
 
-## 3.0 — 开发中
+## 3.0.1 — 2026-09-08
 
-> 新 v3 以 2.8 为游戏逻辑与权威服务端基线，不继承历史旧 v3 实现。
+### 地图与渲染一致性
 
-### 直连中心节点网络层
+- 主场景墙体和完整小地图改为直接绘制 `dtam-map-150-v1` 的 150×150 权威碰撞网格，不再使用 100×100 中心点降采样；修复“障碍能碰撞、小地图存在但主画面不显示”的薄墙/窄障碍。
+- 常驻小地图把静态墙层缓存到离屏 Canvas，动态刷新只绘制玩家、任务和状态标记，减少移动端与 Web 端主线程抖动。
+- 主场景墙体同样预渲染为离屏权威地图层，摄像机每帧只做裁切/缩放；移除旧的 1000/72 rAF 人工帧间隔，90/120/144 Hz 屏幕不再因离散跳帧实际掉到约 45/60/72 fps。
 
-- 新增独立 Rust `dtam-edge` 网关；浏览器先通过 Cloudflare Tunnel 建立信令与兼容通道，再尝试 WebRTC ICE/DataChannel 直达中心节点。
-- v3 不是玩家 mesh P2P：v2.8 Rust Core 继续作为唯一权威状态机，Edge 只替换/复用消息传输路径。
-- 新增 `dtam-control` ordered/reliable 与 `dtam-fast` **ordered/no-retransmit** 两条 DataChannel；fast 不重传旧位置/心跳，同时不允许同一 fast stream 自己乱序。
-- 保留 v2.8 `flushPosition()` 的语义：击杀、报告、任务、能力、紧急会议、通风管、修复等关键动作在 direct 模式下把最近位置和动作连续发送到同一 reliable control stream；必要时两者一起走 WSS fallback，避免跨 DataChannel 乱序破坏服务端距离判定。
-- 同一 LAN 的客户端可通过真实 ICE host candidate 使用当前 `10/8`、`172.16/12`、`192.168/16` 私网地址直连，不需要通过公网或 Cloudflare hairpin。
-- 服务端每次 RTC 协商重新枚举当前 operationally-Up 的 IPv4/IPv6 网卡地址并绑定临时 UDP 端口；公网 IPv4 NAT 映射通过 STUN 重新发现，不把任何动态地址写进节点身份或持久配置。
-- IPv4 DHCP、NAT 映射变化、IPv6 privacy address/prefix 变化导致旧直连失效时，只要 WSS/Tunnel 仍在，就替换 WebRTC PeerConnection 而保留同一 Core 房间/玩家会话。
-- 浏览器与 Edge 都使用 RTC generation fencing；旧 PeerConnection/DataChannel 的晚到 close/error/answer 不会污染已经启动的新路径。
-- Edge 的 STUN/ICE gather 在独立任务中执行，协商期间 WSS 浏览器→Core fallback 仍持续处理游戏消息，不会因为最多数秒的 candidate gather 卡住输入。
-- `dtam-fast` 在浏览器→Core 和 Core→浏览器方向都采用拥塞即丢弃过期采样的策略，不让 fast 队列反压可靠控制流。
-- Tunnel 在直连成功后若临时断开，不会主动关闭仍健康的 DataChannel/Core 会话；两条路径都失效时才进入原 v2.8 resume 流程。
-- NAT2/状态防火墙场景通过双方 ICE connectivity check 主动打洞，不把公网 IPv6 首包可达或路由器 IPv4 DMZ 作为前提。
-- Edge 本身不可用时继续回到原 `rt-d1` v2.8 WebSocket。
-- 浏览器 endpoint 列表与 Edge `node_id` 为后续双服务端路由预留接口；3.0 仍保持单权威房间节点。
+### 联机延迟与手感
 
-### 坐标一致性
+- direct WebRTC 位置更新从约 30 Hz 提升到约 50 Hz；高 RTT direct 链路不再反向降频。TURN relay 维持更保守的约 25 Hz。
+- 直接读取 WebRTC selected candidate pair 的 `currentRoundTripTime` 和候选类型，HUD/预测可以区分真实直连与 TURN relay，而不是主要依赖应用层 ping 猜测链路。
+- 调整远端速度估算、平滑收敛和有界外推，高 RTT 下更快跟手，同时保留最大预测窗口避免失控外推。
+- browser-host 的 doorbell 继续承担即时 join 唤醒；HTTP/D1 后备 join poll 从 2200 ms 缩短到 900 ms，降低 doorbell 受阻时的额外入房等待。
+- WebRTC answer/offer 后备轮询前段进一步收紧，加快常见网络条件下的建链。
 
-- 修复 v2.8 开局服务端重新分配 spawn 后，客户端普通 `state` 路径刻意保留旧 `myPos` 导致各客户端世界坐标不一致的问题。
-- v3 仅在 `game_start` / `lobby_reset` 等权威跃迁后接受服务端 self position，普通移动仍保留本地预测与原服务端 `correct` 校正机制。
+### Windows / Android 客户端与自更新
 
-### Windows 服务端体验
+- 新增 `uk.lunarlab.dtam` Android WebView APK：minSdk 26 / targetSdk 35，复用 canonical web game，支持麦克风 WebRTC 与 `dtam://join?room=NN` 深链。
+- Android 客户端只对正式游戏 origin 放行音频采集，并禁止 cleartext/mixed-content/file-content WebView 访问。
+- Android 更新器从 `update.lunarlab.uk` 自动检查、下载并校验大小与 SHA-256，再交给系统 `PackageInstaller`；遵守 Android 的未知来源授权和安装确认，不伪造静默安装能力。
+- Windows 自包含单 EXE 启动器升级到 3.0.1：游戏先启动，更新检查在旁路进行；下载的新 EXE 通过 Cloudflare host allowlist、大小和 SHA-256 校验后，在当前进程退出后替换自身。
+- 新增 Cloudflare Workers KV 分块更新源。大 EXE 按 ≤20 MiB 分块保存，Worker 流式返回；发布脚本最后才写 `latest.json`，避免中断发布暴露半成品。
 
-- 新增 native Rust `dtam-tray.exe` Windows 通知区 companion，显示 Core/Edge 在线状态、Edge 会话数和当前 IPv4/IPv6，并可打开游戏、`D:\server` 与日志目录。
-- 移除常驻 PowerShell/WinForms 托盘原型；托盘使用 Windows GUI subsystem 与原生消息循环，避免在低内存服务器上长期保留 PowerShell/CLR/WinForms 运行时。
-- 托盘与 SYSTEM 后端进程分离，以登录用户任务启动，避免 Windows Session 0 隔离导致后台服务无法正常显示通知区图标。
-- 新增一次性 `scripts/install-v3.ps1`，可更新 stable Rust、构建 Edge/Tray、安装 SYSTEM/AtStartup Edge、用户/AtLogOn Tray 和按程序放行的 UDP 防火墙规则。
-- 原地升级前安装器先停止已有 Edge/Tray 计划任务与残留进程，避免计划任务自动重启旧二进制后与覆盖文件竞争。
-- CI 在 Windows x64 真正 release-build `dtam-edge.exe` 和 `dtam-tray.exe`，并把两者作为同一 v3 Windows artifact 上传。
+## 3.0.0 — 2026-08-30
 
-### 部署安全与资源边界
+### Browser-host P2P 正式落地
 
-- v2.8 Core `127.0.0.1:28727` 继续保持 loopback-only；v3 Edge HTTP/WSS 信令端口也只计划监听 loopback，由现有 Cloudflared 转发。
-- 直连仅需要按 `dtam-edge.exe` 程序放行 WebRTC UDP，不公开 Core TCP 游戏端口；防火墙规则不绑定动态 IP。
-- Edge 继续校验正式网页 Origin；signaling WebSocket 同时限制 message/frame 为 128 KiB，游戏应用消息上限 16 KiB；总会话数、内部队列与 WebRTC send buffer 均有界。
-- Edge 将经 Cloudflare 验证/传入的 `CF-Connecting-IP` 转给 loopback Core，保留 v2.8 原有的每 IP 并发限制语义。
-- Calls/Realtime 语音 Secret 继续只保存在原锁定的 `server.json`，Edge 配置不复制语音 Secret。
-- Core、Edge、Tray 在 CI 中分别接受 Rust/格式/安全检查；v3 使用当前 stable Rust（开发时 GitHub runner 为 Rust 1.97.1）。
-
+- Auto 模式首选浏览器房主权威：创建房间的客户端运行与 Worker 游戏核心同源的 `GameRoom`，guest 通过 WebRTC DataChannel 直接连接房主。
+- `dtam-control` 使用 ordered/reliable 通道承载关键动作；`dtam-fast` 使用 unordered + `maxRetransmits=0` 承载位置和 RTT 探针，过期位置不会因重传堵塞后续采样。
+- Cloudflare signaling / doorbell 只负责建链与房间协调；受限网络可使用 Cloudflare TURN；无法建立 P2P 时 Auto 保留 Server fallback。
+- 增加浏览器房主热备快照、掉线接管和 epoch fencing，降低房主异常掉线造成的房间丢失。
+- Cloudflare Realtime/Calls 继续承载语音媒体，与游戏 DataChannel 分离。
+- 新增玩家列表、邀请、规则预设、延迟/transport 状态、完整小地图及移动端交互修复。
+- 首个正式 GitHub Release 同时提供网页和可选 Windows x64 自包含启动器。
 ## 2.8 — 2026-08-14
 
 ### 后端迁移与额度

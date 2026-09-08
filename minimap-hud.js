@@ -225,6 +225,7 @@ function installHud() {
   game.appendChild(hud);
   const canvas = hud.querySelector('canvas');
   const ctx = canvas.getContext('2d');
+  let wallLayer = null, wallLayerTheme = '';
 
   hud.addEventListener('click', () => { if (!mapBtn.disabled) mapBtn.click(); });
   const observer = new MutationObserver(() => updateVisibility());
@@ -245,6 +246,18 @@ function installHud() {
       : { floor:'#f8fafc', wall:'#a8b1bd', border:'#667085', task:'#2563eb', danger:'#dc2626', me:'#ffffff', track:'#d97706' };
   }
 
+  function ensureWallLayer(p) {
+    const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+    if (wallLayer && wallLayerTheme === theme && wallLayer.width === canvas.width && wallLayer.height === canvas.height) return wallLayer;
+    wallLayerTheme = theme;
+    wallLayer = document.createElement('canvas');
+    wallLayer.width = canvas.width; wallLayer.height = canvas.height;
+    const b = wallLayer.getContext('2d'), sx=wallLayer.width/MAP_SIZE, sy=wallLayer.height/MAP_SIZE;
+    b.fillStyle=p.floor;b.fillRect(0,0,wallLayer.width,wallLayer.height);b.fillStyle=p.wall;
+    for(let y=0;y<MAP_SIZE;y++)for(let x=0;x<MAP_SIZE;x++)if(MAP_MASK[y*MAP_SIZE+x])b.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy));
+    return wallLayer;
+  }
+
   function drawDot(x,y,color,r=4,stroke='') {
     const sx=clamp(Number(x),0,MAP_SIZE)/MAP_SIZE*canvas.width, sy=clamp(Number(y),0,MAP_SIZE)/MAP_SIZE*canvas.height;
     ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
@@ -255,9 +268,7 @@ function installHud() {
     updateVisibility();
     if (hud.hidden) return;
     const p = palette(), w=canvas.width, h=canvas.height, sx=w/MAP_SIZE, sy=h/MAP_SIZE;
-    ctx.clearRect(0,0,w,h);ctx.fillStyle=p.floor;ctx.fillRect(0,0,w,h);
-    ctx.fillStyle=p.wall;
-    for(let y=0;y<MAP_SIZE;y++)for(let x=0;x<MAP_SIZE;x++)if(MAP_MASK[y*MAP_SIZE+x])ctx.fillRect(x*sx,y*sy,Math.ceil(sx),Math.ceil(sy));
+    ctx.clearRect(0,0,w,h);ctx.drawImage(ensureWallLayer(p),0,0);
 
     const completed = new Set(state.completed || []);
     for (const id of state.tasks || []) {
