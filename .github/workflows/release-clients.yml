@@ -1,0 +1,99 @@
+name: Release clients
+
+on:
+  push:
+    branches:
+      - 'release-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#release-v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "bad release branch: $GITHUB_REF_NAME" >&2
+            exit 2
+          fi
+          git fetch origin main --depth=1
+          source_sha="$(git rev-parse origin/main)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Download and verify Cloudflare client assets
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-all-errors 'https://update.lunarlab.uk/latest.json' -o latest.json
+          test "$(jq -r '.version' latest.json)" = "$VERSION"
+
+          win_url="$(jq -r '.windows.url' latest.json)"
+          win_sha="$(jq -r '.windows.sha256' latest.json)"
+          win_size="$(jq -r '.windows.size' latest.json)"
+          apk_url="$(jq -r '.android.url' latest.json)"
+          apk_sha="$(jq -r '.android.sha256' latest.json)"
+          apk_size="$(jq -r '.android.size' latest.json)"
+          test "$(jq -r '.android.version' latest.json)" = "$VERSION"
+          [[ "$win_url" == https://update.lunarlab.uk/* ]]
+          [[ "$apk_url" == https://update.lunarlab.uk/* ]]
+          [[ "$win_sha" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$apk_sha" =~ ^[0-9a-f]{64}$ ]]
+
+          win="DTAM-Windows-x64-v${VERSION}.exe"
+          apk="DTAM-Android-v${VERSION}.apk"
+          curl -fL --retry 4 --retry-all-errors "$win_url" -o "$win"
+          curl -fL --retry 4 --retry-all-errors "$apk_url" -o "$apk"
+          test "$(stat -c %s "$win")" = "$win_size"
+          test "$(stat -c %s "$apk")" = "$apk_size"
+          echo "$win_sha  $win" | sha256sum -c -
+          echo "$apk_sha  $apk" | sha256sum -c -
+
+          zip -j "DTAM-Windows-x64-v${VERSION}.zip" "$win" client/windows/README.md
+          sha256sum "$win" "$apk" "DTAM-Windows-x64-v${VERSION}.zip" > SHA256SUMS.txt
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "release v$VERSION already exists" >&2
+            exit 3
+          fi
+          cat > RELEASE_NOTES.md <<EOF
+          DTAM v${VERSION}
+
+          - 正式网页：https://d1.lunarlab.uk/
+          - 修复 150×150 权威碰撞网格与主场景/小地图显示不一致的问题。
+          - Web 主循环跟随 requestAnimationFrame，不再以 72 Hz 门槛在高刷屏上离散跳帧；静态墙体使用离屏缓存。
+          - Direct WebRTC 位置同步约 50 Hz，并读取 selected candidate pair 的真实 RTT/TURN 状态；优化高 RTT 平滑与预测。
+          - 新增 Android WebView APK 与 Windows/Android Cloudflare 自更新。
+          - 更新源：https://update.lunarlab.uk/latest.json
+
+          SHA-256 见随附 SHA256SUMS.txt。
+          EOF
+          gh release create "v$VERSION" \
+            --target "$SOURCE_SHA" \
+            --title "DTAM v$VERSION" \
+            --notes-file RELEASE_NOTES.md \
+            "DTAM-Windows-x64-v${VERSION}.exe" \
+            "DTAM-Windows-x64-v${VERSION}.zip" \
+            "DTAM-Android-v${VERSION}.apk" \
+            SHA256SUMS.txt
