@@ -1,0 +1,156 @@
+name: Build server v2.8 hotfix
+
+on:
+  push:
+    branches: [v3-2.8-base]
+    paths:
+      - .github/workflows/server-v28-hotfix-build.yml
+      - server/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-server:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply server-only compatibility hotfix
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('server/src/main.rs')
+          s = p.read_text(encoding='utf-8')
+          old_reset = '''fn reset_lobby(rt: &mut RoomRuntime, player_id: &str) {
+              if rt.room.host_id != player_id || rt.room.phase != "ended" {
+                  return;
+              }'''
+          new_reset = '''fn reset_lobby(rt: &mut RoomRuntime, player_id: &str) {
+              // The host may abort an active round and return everyone to the existing lobby.
+              // This keeps the wire protocol unchanged: old clients still send {t:"reset"}.
+              if rt.room.host_id != player_id || rt.room.phase == "lobby" {
+                  return;
+              }'''
+          if old_reset not in s:
+              raise SystemExit('reset_lobby baseline not found')
+          s = s.replace(old_reset, new_reset, 1)
+
+          old_chat = '''        "chat" => {
+              let text = sanitize_text(msg.get("text").and_then(Value::as_str).unwrap_or(""));
+              if text.is_empty() {
+                  return true;
+              }
+              let now = now_ms();
+              let Some(p) = rt.room.players.get(player_id).cloned() else {
+                  return true;
+              };
+              let meeting = rt.room.phase == "meeting"
+                  && rt
+                      .room
+                      .meeting
+                      .as_ref()
+                      .map(|m| matches!(m.stage.as_str(), "discussion" | "voting" | "result"))
+                      .unwrap_or(false);
+              if rt.room.phase == "playing" && p.alive && !meeting {
+                  return true;
+              }
+              if now - p.last_chat_at < 300 {
+                  return true;
+              }
+              if let Some(x) = rt.room.players.get_mut(player_id) {
+                  x.last_chat_at = now;
+              }
+              let ghost = rt.room.phase == "playing" && !p.alive;
+              let payload = json!({"t":"chat","playerId":p.id,"name":p.name,"text":text,"at":now,"dead":ghost,"channel":if ghost{"ghost"}else if meeting{"meeting"}else{"room"}});
+              if ghost {
+                  for q in rt.room.players.values() {
+                      if !q.alive {
+                          rt.send_to(&q.id, payload.clone());
+                      }
+                  }
+              } else {
+                  rt.broadcast(payload, None);
+              }
+          }'''
+          new_chat = '''        "chat" => {
+              let text = sanitize_text(msg.get("text").and_then(Value::as_str).unwrap_or(""));
+              if text.is_empty() {
+                  return true;
+              }
+              let now = now_ms();
+              let Some(p) = rt.room.players.get(player_id).cloned() else {
+                  return true;
+              };
+              let in_game = matches!(rt.room.phase.as_str(), "playing" | "meeting");
+              let meeting = rt.room.phase == "meeting"
+                  && rt
+                      .room
+                      .meeting
+                      .as_ref()
+                      .map(|m| matches!(m.stage.as_str(), "discussion" | "voting" | "result"))
+                      .unwrap_or(false);
+
+              // Server-side command fallback for old clients: no new UI/protocol is required.
+              // It is mainly useful from meeting chat; a future client may expose reset directly.
+              let command = text.trim().to_ascii_lowercase();
+              if p.id == rt.room.host_id
+                  && matches!(command.as_str(), "/重开" | "/重置" | "/restart" | "/rematch")
+              {
+                  if rt.room.phase != "lobby" {
+                      rt.broadcast(json!({"t":"notice","text":"房主结束本局，返回等待室"}), None);
+                      reset_lobby(rt, player_id);
+                  }
+                  return true;
+              }
+
+              // Living players may talk only in a meeting. Dead players stay in the ghost
+              // channel during both free play and meetings, so their messages never leak alive.
+              if in_game && p.alive && !meeting {
+                  return true;
+              }
+              if now - p.last_chat_at < 300 {
+                  return true;
+              }
+              if let Some(x) = rt.room.players.get_mut(player_id) {
+                  x.last_chat_at = now;
+              }
+              let ghost = in_game && !p.alive;
+              let payload = json!({"t":"chat","playerId":p.id,"name":p.name,"text":text,"at":now,"dead":ghost,"channel":if ghost{"ghost"}else if meeting{"meeting"}else{"room"}});
+              if ghost {
+                  for q in rt.room.players.values() {
+                      if !q.alive {
+                          rt.send_to(&q.id, payload.clone());
+                      }
+                  }
+              } else {
+                  rt.broadcast(payload, None);
+              }
+          }'''
+          if old_chat not in s:
+              raise SystemExit('chat baseline not found')
+          s = s.replace(old_chat, new_chat, 1)
+          old_health = 'json!({"ok":true,"service":"d1-realtime-pc","version":"2.8","voice":!state.calls_app_id.is_empty()&&!state.calls_secret.is_empty(),"backend":"rust+cloudflared"})'
+          new_health = 'json!({"ok":true,"service":"d1-realtime-pc","version":"2.8.1-serverhotfix","voice":!state.calls_app_id.is_empty()&&!state.calls_secret.is_empty(),"backend":"rust+cloudflared"})'
+          if old_health not in s:
+              raise SystemExit('health baseline not found')
+          s = s.replace(old_health, new_health, 1)
+          p.write_text(s, encoding='utf-8')
+      - name: Verify and build server
+        shell: pwsh
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup component add rustfmt clippy
+          cargo fmt --manifest-path server/Cargo.toml -- --check
+          cargo clippy --manifest-path server/Cargo.toml --all-targets --locked -- -D warnings
+          cargo test --manifest-path server/Cargo.toml --locked
+          cargo build --release --manifest-path server/Cargo.toml --locked
+      - name: Upload Windows server binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dtam-server-v28-serverhotfix-windows-x64
+          path: server/target/release/dtam-server.exe
+          if-no-files-found: error
+          retention-days: 7
