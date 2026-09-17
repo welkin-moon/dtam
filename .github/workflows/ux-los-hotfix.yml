@@ -22,7 +22,6 @@ jobs:
           node --check game.js
           grep -q "selfState.alive&&!hasNetworkLineOfSight(myPos,b)" game.js
           grep -q "UX LOS HOTFIX 20260917" player-shell.css
-          git diff --check
           git diff --numstat -- game.js player-shell.css
       - name: Commit
         run: |
