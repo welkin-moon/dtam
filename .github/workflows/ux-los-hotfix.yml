@@ -1,0 +1,33 @@
+name: UX and LOS clean hotfix
+on:
+  push:
+    branches: [fix/ux-los-clean-20260917]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ux-los-clean-20260917
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python3 scripts/apply_ux_los_hotfix.py
+      - name: Validate
+        run: |
+          node --check game.js
+          grep -q "selfState.alive&&!hasNetworkLineOfSight(myPos,b)" game.js
+          grep -q "UX LOS HOTFIX 20260917" player-shell.css
+          git diff --check
+          git diff --numstat -- game.js player-shell.css
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game.js player-shell.css
+          git commit -m "Fix overlay conflicts and wall occlusion"
+          git push origin HEAD:fix/ux-los-clean-20260917
