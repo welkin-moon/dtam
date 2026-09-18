@@ -15,6 +15,7 @@
 - Browser-host P2P authority 与 Rust Server fallback 同时增加在线实例 fencing：只有同一 client instance 的重连能替换旧 socket；不同实例即使拿到同一个 resume token，也不能踢掉在线玩家。
 - 兼容旧版纯字符串 resume token；检测到 token 正被另一实例占用时，lobby 会自动放弃该 token 并作为新的同名玩家加入。
 - 重连 fencing 不牺牲恢复能力：同一实例的网络重连/刷新可直接替换旧 socket；进程重启或崩溃后，本地确认上一实例租约已失效时会携带上一 instance ID 执行 handoff，并兼容升级前尚未绑定 instance ID 的旧会话。
+- Chromium/WebView 优先使用 Web Locks 持有实例所有权，避免后台标签页定时器被节流后误判为离线；旧环境继续使用短租约兼容路径。
 
 ## 3.0.1 — 2026-09-08
 
