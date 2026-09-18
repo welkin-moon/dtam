@@ -263,4 +263,4 @@ Object.defineProperties(P2PWebSocket.prototype,{CONNECTING:{value:0},OPEN:{value
 window.WebSocket=P2PWebSocket;
 setBadge('P2P · CF mailbox','自己的 Cloudflare 仅负责短时 SDP mailbox；无需 Durable Objects');
 console.log('DTAM experimental P2P transport',VERSION);
-await import('./game.js?v=20260918-v302session2-cf');
+await import('./game.js?v=20260918-v302session3-cf');
