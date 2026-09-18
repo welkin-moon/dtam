@@ -628,6 +628,25 @@ fn sanitize_name(s: &str) -> String {
     let t = if t.is_empty() { "玩家" } else { t };
     t.chars().take(12).collect()
 }
+fn requested_name_valid(name: &str) -> bool {
+    !name.chars().last().map(|c| c.is_ascii_digit()).unwrap_or(false)
+}
+fn unique_player_name(room: &Room, base: &str) -> String {
+    let used: HashSet<&str> = room.players.values().map(|p| p.name.as_str()).collect();
+    if !used.contains(base) {
+        return base.to_string();
+    }
+    for n in 2..=99 {
+        let suffix = n.to_string();
+        let keep = 12usize.saturating_sub(suffix.chars().count()).max(1);
+        let stem: String = base.chars().take(keep).collect();
+        let candidate = format!("{}{}", stem, suffix);
+        if !used.contains(candidate.as_str()) {
+            return candidate;
+        }
+    }
+    format!("玩家{}", Uuid::new_v4().simple().to_string().chars().take(4).collect::<String>())
+}
 fn sanitize_client_instance_id(s: &str) -> String {
     let t = s.trim();
     if (16..=64).contains(&t.len())
@@ -2907,7 +2926,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
             rt.room
                 .players
                 .values()
-                .find(|p| p.token == q.token && p.name == name)
+                .find(|p| p.token == q.token)
                 .cloned()
         } else {
             None
@@ -2945,6 +2964,16 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
             }
         }
         if player_opt.is_none() {
+            if !requested_name_valid(&name) {
+                let _ = socket
+                    .send(Message::Text(
+                        json!({"t":"error","code":"name_invalid","message":"昵称不能以数字结尾；重名时系统会自动添加数字"})
+                            .to_string(),
+                    ))
+                    .await;
+                let _ = socket.close().await;
+                return;
+            }
             let create = q.create == "1";
             if create && rt.room.initialized && !rt.room.players.is_empty() {
                 let _ = socket
@@ -2989,7 +3018,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
                 id: id.clone(),
                 token: Uuid::new_v4().to_string(),
                 client_instance_id: client_instance_id.clone(),
-                name: name.clone(),
+                name: unique_player_name(&rt.room, &name),
                 color: next_color(&rt.room),
                 animal: next_animal(&rt.room),
                 avatar: String::new(),
@@ -3070,7 +3099,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
             },
         );
         announce_host_change(&rt, &prev);
-        rt.send_to(&player_id,json!({"t":"welcome","room":q.room,"mapId":MAP_PROTOCOL_ID,"resumed":resumed,"self":{"id":p.id,"token":p.token},"hostId":rt.room.host_id,"players":public_players(&rt.room),"profiles":profiles(&rt.room),"voices":voice_directory(&rt.room,Some(&p)),"bodies":rt.room.bodies,"game":public_game(&rt.room,&p.id),"selfState":self_state(&rt.room,&p)}));
+        rt.send_to(&player_id,json!({"t":"welcome","room":q.room,"mapId":MAP_PROTOCOL_ID,"resumed":resumed,"self":{"id":p.id,"token":p.token,"name":p.name},"hostId":rt.room.host_id,"players":public_players(&rt.room),"profiles":profiles(&rt.room),"voices":voice_directory(&rt.room,Some(&p)),"bodies":rt.room.bodies,"game":public_game(&rt.room,&p.id),"selfState":self_state(&rt.room,&p)}));
         if !resumed {
             rt.broadcast(
                 json!({"t":"notice","text":format!("{} 加入了房间",p.name)}),
@@ -3194,7 +3223,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
 
 async fn health(State(state): State<AppState>) -> Json<Value> {
     Json(
-        json!({"ok":true,"service":"d1-realtime-pc","version":"2.8.3-reconnect-fence","voice":!state.calls_app_id.is_empty()&&!state.calls_secret.is_empty(),"backend":"rust+cloudflared"}),
+        json!({"ok":true,"service":"d1-realtime-pc","version":"2.8.4-room-identity","voice":!state.calls_app_id.is_empty()&&!state.calls_secret.is_empty(),"backend":"rust+cloudflared"}),
     )
 }
 #[derive(Deserialize)]
