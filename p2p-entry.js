@@ -196,6 +196,8 @@ class BrowserRoomHost {
     const token = String(params.get('token') || '');
     const rawClientInstance = String(params.get('client') || '');
     const clientInstance = /^[A-Za-z0-9_-]{16,64}$/.test(rawClientInstance) ? rawClientInstance : '';
+    const rawHandoffInstance = String(params.get('handoff') || '');
+    const handoffInstance = /^[A-Za-z0-9_-]{16,64}$/.test(rawHandoffInstance) ? rawHandoffInstance : '';
     const now = Date.now();
     const room = this.room;
     const staleEmpty = room.initialized && !Object.keys(room.players).length;
@@ -206,7 +208,7 @@ class BrowserRoomHost {
     let resumed = false;
     if (player && player.name !== name) player = null;
     const connectionId = randomPeerId();
-    if (player && player.connected && (!clientInstance || !player.clientInstanceId || player.clientInstanceId !== clientInstance)) return this.reject(authoritySocket, 'session_in_use', '这个会话正在另一实例中使用，将作为新玩家加入');
+    if (player && player.connected) { const same = !!clientInstance && !!player.clientInstanceId && player.clientInstanceId === clientInstance, legacy = !player.clientInstanceId, transfer = !!clientInstance && !!handoffInstance && handoffInstance === player.clientInstanceId && clientInstance !== player.clientInstanceId; if (!(same || legacy || transfer)) return this.reject(authoritySocket, 'session_in_use', '这个会话正在另一实例中使用，将作为新玩家加入'); }
 
     if (player) {
       if (now - Number(player.lastSeen || now) <= RECONNECT_GRACE_MS || player.connected) {
@@ -667,4 +669,4 @@ window.WebSocket = P2PWebSocket;
 setBadge('P2P · 准备中', '房主浏览器权威 + WebRTC DataChannel；失败时尝试家中 rt-d1');
 console.log('DTAM experimental P2P browser-host transport', VERSION);
 
-await import('./game.js?v=20260918-v302session3-p2p');
+await import('./game.js?v=20260918-v302session4-p2p');
