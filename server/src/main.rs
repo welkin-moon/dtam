@@ -84,6 +84,13 @@ const SPAWNS: [(f64, f64); 15] = [
     (72.0, 76.0),
     (78.0, 76.0),
 ];
+const BUSH_ZONES: [(&str, f64, f64, f64, f64); 5] = [
+    ("bush-nw", 32.0, 8.0, 10.0, 10.0),
+    ("bush-w", 8.0, 32.0, 10.0, 10.0),
+    ("bush-ne", 108.0, 32.0, 10.0, 10.0),
+    ("bush-sw", 32.0, 108.0, 10.0, 10.0),
+    ("bush-se", 108.0, 108.0, 10.0, 10.0),
+];
 const DOOR_CELLS: [(i32, i32); 12] = [
     (75, 56),
     (75, 57),
@@ -867,6 +874,21 @@ fn has_line_of_sight(a: &Pos, b: &Pos, doors_closed: bool) -> bool {
     }
     true
 }
+fn bush_region(pos: &Pos) -> &'static str {
+    for (id, x, y, w, h) in BUSH_ZONES {
+        if pos.x >= x && pos.x < x + w && pos.y >= y && pos.y < y + h {
+            return id;
+        }
+    }
+    ""
+}
+fn can_see_player(a: &Pos, b: &Pos, doors_closed: bool) -> bool {
+    if !has_line_of_sight(a, b, doors_closed) {
+        return false;
+    }
+    let target_bush = bush_region(b);
+    target_bush.is_empty() || bush_region(a) == target_bush
+}
 
 fn val_i(raw: &Value, key: &str, fb: i64) -> i64 {
     raw.get(key)
@@ -1597,7 +1619,7 @@ fn use_ability(rt: &mut RoomRuntime, player_id: &str, target_id: &str) {
                 || !t.alive
                 || t.in_vent
                 || dist(&me.pos, &t.pos) > 1.8
-                || !has_line_of_sight(&me.pos, &t.pos, rt.room.door_lock_until > now)
+                || !can_see_player(&me.pos, &t.pos, rt.room.door_lock_until > now)
             {
                 return;
             }
@@ -1618,7 +1640,7 @@ fn use_ability(rt: &mut RoomRuntime, player_id: &str, target_id: &str) {
             let Some(t) = target else {
                 return;
             };
-            if t.id == me.id || !t.connected || !t.alive || dist(&me.pos, &t.pos) > 1.8 {
+            if t.id == me.id || !t.connected || !t.alive || dist(&me.pos, &t.pos) > 1.8 || !can_see_player(&me.pos, &t.pos, rt.room.door_lock_until > now) {
                 return;
             }
             if let Some(p) = rt.room.players.get_mut(player_id) {
@@ -1637,7 +1659,7 @@ fn use_ability(rt: &mut RoomRuntime, player_id: &str, target_id: &str) {
             let Some(t) = target else {
                 return;
             };
-            if t.id == me.id || !t.connected || !t.alive || dist(&me.pos, &t.pos) > 1.8 {
+            if t.id == me.id || !t.connected || !t.alive || dist(&me.pos, &t.pos) > 1.8 || !can_see_player(&me.pos, &t.pos, rt.room.door_lock_until > now) {
                 return;
             }
             if t.last_case_id.is_empty() || t.last_case_area.is_empty() {
@@ -1689,7 +1711,7 @@ fn kill_player(rt: &mut RoomRuntime, killer_id: &str, target_id: &str) {
         || t.id == k.id
         || is_impostor(&t.role)
         || dist(&k.pos, &t.pos) > 1.2
-        || !has_line_of_sight(&k.pos, &t.pos, rt.room.door_lock_until > now)
+        || !can_see_player(&k.pos, &t.pos, rt.room.door_lock_until > now)
     {
         return;
     }
@@ -3099,7 +3121,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
             },
         );
         announce_host_change(&rt, &prev);
-        rt.send_to(&player_id,json!({"t":"welcome","room":q.room,"mapId":MAP_PROTOCOL_ID,"resumed":resumed,"self":{"id":p.id,"token":p.token,"name":p.name},"hostId":rt.room.host_id,"players":public_players(&rt.room),"profiles":profiles(&rt.room),"voices":voice_directory(&rt.room,Some(&p)),"bodies":rt.room.bodies,"game":public_game(&rt.room,&p.id),"selfState":self_state(&rt.room,&p)}));
+        rt.send_to(&player_id,json!({"t":"welcome","room":q.room,"mapId":MAP_PROTOCOL_ID,"resumed":resumed,"self":{"id":p.id,"token":p.token,"name":p.name},"features":{"bushVision":true,"mapManifest":"/maps/east-beach-v1.json"},"hostId":rt.room.host_id,"players":public_players(&rt.room),"profiles":profiles(&rt.room),"voices":voice_directory(&rt.room,Some(&p)),"bodies":rt.room.bodies,"game":public_game(&rt.room,&p.id),"selfState":self_state(&rt.room,&p)}));
         if !resumed {
             rt.broadcast(
                 json!({"t":"notice","text":format!("{} 加入了房间",p.name)}),
@@ -3223,7 +3245,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
 
 async fn health(State(state): State<AppState>) -> Json<Value> {
     Json(
-        json!({"ok":true,"service":"d1-realtime-pc","version":"2.8.4-room-identity","voice":!state.calls_app_id.is_empty()&&!state.calls_secret.is_empty(),"backend":"rust+cloudflared"}),
+        json!({"ok":true,"service":"d1-realtime-pc","version":"2.8.5-map-visibility","voice":!state.calls_app_id.is_empty()&&!state.calls_secret.is_empty(),"backend":"rust+cloudflared"}),
     )
 }
 #[derive(Deserialize)]
