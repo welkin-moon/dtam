@@ -275,7 +275,7 @@ function showMenu(){menu.style.display='flex';game.style.display='none';window._
 function showGame(){menu.style.display='none';game.style.display='block';checkOrientation();resizeCanvas();}
 function enterGame(){showGame();hudMyName.textContent=myName;roomIdDisplay.textContent=currentRoom;renderAllUI();lastFrameTime=performance.now();if(!window._gameLoopRunning){window._gameLoopRunning=true;requestAnimationFrame(gameLoop);}}
 function makeClientInstanceId(){try{const b=new Uint8Array(16);crypto.getRandomValues(b);return Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');}catch(_){return(Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)).slice(0,32);}}
-function loadClientInstanceId(){try{let id=sessionStorage.getItem('au-dtam-client-instance')||'';if(!/^[A-Za-z0-9_-]{16,64}$/.test(id)){id=makeClientInstanceId();sessionStorage.setItem('au-dtam-client-instance',id);}return id;}catch(_){return makeClientInstanceId();}}
+function loadClientInstanceId(){try{let id=sessionStorage.getItem('au-dtam-client-instance')||'',valid=/^[A-Za-z0-9_-]{16,64}$/.test(id);if(valid){const nav=performance.getEntriesByType?.('navigation')?.[0]?.type||'',lease=Number(localStorage.getItem('au-dtam-client-lease:'+id)||0);if(nav!=='reload'&&Number.isFinite(lease)&&lease>0&&Date.now()-lease<7000)valid=false;}if(!valid){id=makeClientInstanceId();sessionStorage.setItem('au-dtam-client-instance',id);}return id;}catch(_){return makeClientInstanceId();}}
 const CLIENT_INSTANCE_ID=loadClientInstanceId();
 const CLIENT_INSTANCE_LEASE_KEY='au-dtam-client-lease:'+CLIENT_INSTANCE_ID;
 function touchClientInstanceLease(){try{localStorage.setItem(CLIENT_INSTANCE_LEASE_KEY,String(Date.now()));}catch(_){}}

@@ -26,9 +26,10 @@ includes(src,'if(acceptSelf||awaitingAuthoritativeSelfPosition)','spawn and rese
 includes(src,'seq<=remoteMoveSeq[id]','stale movement packets must be rejected');
 includes(src,'map:MAP_PROTOCOL_ID','every room connection must identify the canonical map protocol');
 includes(src,'client:CLIENT_INSTANCE_ID','every room connection must carry a per-instance identity fence');
+includes(src,"nav!=='reload'",'copied tabs must detect an already-live client instance instead of sharing its identity');
 includes(src,"code==='session_in_use'",'client must recover from a token already owned by another live instance');
 includes(hybrid,"p.clientInstanceId!==client",'Auto browser-host authority must not let another instance replace a live player');
-includes(hybrid,"game.js?v=20260918-v302session1",'transport must load the current session-fencing gameplay bundle');
+includes(hybrid,"game.js?v=20260918-v302session2",'transport must load the current session-fencing gameplay bundle');
 includes(src,'directReady:p.directReady===true','Server direct readiness must be represented per player');
 includes(src,'startGameBtn.disabled=count<2||waiting>0','Server matches must wait for every direct transport');
 includes(src,"const POS_SEND_INTERVAL_DIRECT = 20",'direct P2P movement must target about 50 Hz');
@@ -43,7 +44,7 @@ includes(src,"function remoteSmoothingRate()",'remote smoothing must adapt to th
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
 includes(html,'/styles.css?v=20260829-ux1','current UX cache-busted stylesheet must be loaded');
-includes(html,'/hybrid-transport.js?v=20260918-v302session1','current transport entry must be loaded');
+includes(html,'/hybrid-transport.js?v=20260918-v302session2','current transport entry must be loaded');
 excludes(headers,'immutable','runtime assets must never pin mixed protocol versions');
 includes(headers,'Cache-Control: no-cache, max-age=0, must-revalidate','runtime assets must revalidate');
 includes(html,'maxlength="2"','room input must be two digits');
@@ -61,7 +62,7 @@ includes(src,'function handleGameShortcut(e)','desktop gameplay shortcuts must b
 includes(src,'const PLAYER_VISUAL_RADIUS = 0.56','player sprites must have a readable visual size without changing collision radius');
 includes(src,'function drawObjectiveHint(view,p)','offscreen tasks and urgent repairs must have direction guidance');
 includes(src,"label=pl.id===myPlayerId?'你':shown.name",'the local player label must stay concise in crowded spawns');
-includes(hybrid,"game.js?v=20260918-v302session1",'transport must load the current gameplay/performance bundle');
+includes(hybrid,"game.js?v=20260918-v302session2",'transport must load the current gameplay/performance bundle');
 includes(hybrid,"game-polish.js?v=20260829-ux1",'transport must load the current polish bundle');
 includes(playerCss,'DTAM UX FLOW 20260829','player shell must include the current lobby layout layer');
 excludes(polish,'stopImmediatePropagation()','typing, shortcuts, and IME input must not be swallowed by a capture guard');
