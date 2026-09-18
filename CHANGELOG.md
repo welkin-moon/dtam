@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.0.2 — 2026-09-18
+
+### 稳定客户端壳与域名迁移
+
+- Windows / Android 继续保留 Auto、浏览器房主权威、WebRTC DataChannel、TURN/doorbell/信令和 Server fallback；常规功能更新继续由 canonical 网页热发布，不要求重装客户端。
+- Windows 启动入口可直接跟随 HTTPS 静态重定向；Android 在启动重定向链结束后动态锁定最终 HTTPS 游戏 origin，后续换 canonical 域名时可让旧 d1.lunarlab.uk 使用纯静态 Pages 重定向完成兼容。
+- Android 麦克风权限不会因此放宽到任意网页，只允许本次启动最终确认的游戏 origin。
+
+### 联机会话 fencing
+
+- 新增每个标签页/壳实例独立的 client instance ID；昵称仅作为显示名，允许同名玩家并存。
+- resume token 改为带实例归属的持久记录，并在当前标签页保留独立恢复副本，避免同源标签页因为同名共享 token。
+- Browser-host P2P authority 与 Rust Server fallback 同时增加在线实例 fencing：只有同一 client instance 的重连能替换旧 socket；不同实例即使拿到同一个 resume token，也不能踢掉在线玩家。
+- 兼容旧版纯字符串 resume token；检测到 token 正被另一实例占用时，lobby 会自动放弃该 token 并作为新的同名玩家加入。
+
 ## 3.0.1 — 2026-09-08
 
 ### 地图与渲染一致性

@@ -10,7 +10,11 @@
 
 网页是游戏的 canonical client。Windows 与 Android 客户端都复用同一套网页游戏与协议，因此规则、地图和联机修复会随线上前端同步生效。
 
-## 当前版本：v3.0.1
+v3.0.2 起原生壳作为长期稳定的 transport/bootstrap 容器：常规玩法、UI、地图与协议兼容修复只发布网页，不要求重新安装客户端。Windows 会自然跟随 canonical URL 的 HTTPS 重定向；Android 会在每次启动时只信任从 d1.lunarlab.uk 启动链最终落地的 HTTPS 游戏 origin，并把麦克风权限锁定到该 origin。因此未来可以把旧域名改成纯静态 Pages 重定向后迁移 canonical 网页，而不需要同步发布新壳。
+
+联机身份也不再由昵称隐式绑定：昵称允许重复；恢复会话使用 resume token + 每个标签页/壳实例独立的 client instance fencing。共享浏览器存储中的同名 token 不再能把另一个在线玩家顶下线。
+
+## 当前版本：v3.0.2
 
 v3 的默认 Auto 联机已经不是早期实验文档中的“浏览器 → Rust Edge → Rust Core”路径。当前首选路径是浏览器房主权威 + WebRTC DataChannel：创建房间的客户端承载权威 `GameRoom`，其他玩家优先与房主建立 WebRTC 数据通道；Cloudflare 负责静态站点、建链信令/doorbell、受限网络下的 TURN，以及原有 Server 路径的兜底能力。
 

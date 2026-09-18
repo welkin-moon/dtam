@@ -1,6 +1,6 @@
 param(
-    [string]$VersionName = '3.0.1',
-    [int]$VersionCode = 3000100,
+    [string]$VersionName = '3.0.2',
+    [int]$VersionCode = 3000200,
     [string]$OutputPath = ''
 )
 

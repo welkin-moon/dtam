@@ -194,6 +194,8 @@ class BrowserRoomHost {
     const create = params.get('create') === '1';
     const name = sanitizeName(params.get('name'));
     const token = String(params.get('token') || '');
+    const rawClientInstance = String(params.get('client') || '');
+    const clientInstance = /^[A-Za-z0-9_-]{16,64}$/.test(rawClientInstance) ? rawClientInstance : '';
     const now = Date.now();
     const room = this.room;
     const staleEmpty = room.initialized && !Object.keys(room.players).length;
@@ -204,6 +206,7 @@ class BrowserRoomHost {
     let resumed = false;
     if (player && player.name !== name) player = null;
     const connectionId = randomPeerId();
+    if (player && player.connected && (!clientInstance || !player.clientInstanceId || player.clientInstanceId !== clientInstance)) return this.reject(authoritySocket, 'session_in_use', '这个会话正在另一实例中使用，将作为新玩家加入');
 
     if (player) {
       if (now - Number(player.lastSeen || now) <= RECONNECT_GRACE_MS || player.connected) {
@@ -226,6 +229,7 @@ class BrowserRoomHost {
       player = {
         id,
         token: randomPeerId(),
+        clientInstanceId: clientInstance,
         name,
         color: room.nextColor(),
         animal: room.nextAnimal(),
@@ -250,6 +254,7 @@ class BrowserRoomHost {
       if (!room.hostId) room.hostId = id;
     }
 
+    if (clientInstance) player.clientInstanceId = clientInstance;
     const previousHostId = room.hostId;
     player.connected = true;
     player.connectionId = connectionId;

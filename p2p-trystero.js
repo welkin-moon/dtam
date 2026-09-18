@@ -125,6 +125,8 @@ class BrowserAuthority {
     const create = params.get('create') === '1';
     const name = sanitizeName(params.get('name'));
     const token = String(params.get('token') || '');
+    const rawClientInstance = String(params.get('client') || '');
+    const clientInstance = /^[A-Za-z0-9_-]{16,64}$/.test(rawClientInstance) ? rawClientInstance : '';
     const now = Date.now();
     const room = this.room;
     if (room.initialized && !Object.keys(room.players).length) room.resetIfEmpty();
@@ -133,6 +135,7 @@ class BrowserAuthority {
     let resumed = false;
     if (player && player.name !== name) player = null;
     const connectionId = randomId();
+    if (player && player.connected && (!clientInstance || !player.clientInstanceId || player.clientInstanceId !== clientInstance)) return this.reject(sock, 'session_in_use', '这个会话正在另一实例中使用，将作为新玩家加入');
     if (player) {
       if (now - Number(player.lastSeen || now) <= RECONNECT_GRACE_MS || player.connected) {
         const old = room.socketForPlayer(player.id);
@@ -148,7 +151,7 @@ class BrowserAuthority {
       if (create && !room.initialized) { room.initialized = true; room.createdAt = now; }
       const id = randomId();
       player = {
-        id, token: randomId(), name, color: room.nextColor(), animal: room.nextAnimal(), avatar: '',
+        id, token: randomId(), clientInstanceId: clientInstance, name, color: room.nextColor(), animal: room.nextAnimal(), avatar: '',
         pos: room.spawnForIndex(Object.keys(room.players).length), connected: true, connectionId,
         joinedAt: now, lastSeen: now, lastMoveAt: now, lastChatAt: 0,
         role: '', ghostRole: '', alive: true, tasks: [], fakeTasks: [], completed: [],
@@ -161,6 +164,7 @@ class BrowserAuthority {
       room.players[id] = player;
       if (!room.hostId) room.hostId = id;
     }
+    if (clientInstance) player.clientInstanceId = clientInstance;
     const previousHostId = room.hostId;
     player.connected = true; player.connectionId = connectionId; player.lastSeen = now;
     if (!room.players[room.hostId]?.connected) room.electHost();

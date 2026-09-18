@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 const string Home = "https://d1.lunarlab.uk/";
 const string UpdateManifest = "https://update.lunarlab.uk/latest.json";
 const string UpdateHost = "update.lunarlab.uk";
-const string CurrentVersion = "3.0.1";
+const string CurrentVersion = "3.0.2";
 const long MaxUpdateBytes = 180L * 1024L * 1024L;
 const long MaxChunkBytes = 24L * 1024L * 1024L;
 

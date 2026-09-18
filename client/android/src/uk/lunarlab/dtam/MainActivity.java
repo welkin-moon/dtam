@@ -43,7 +43,7 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity {
     private static final String HOME = "https://d1.lunarlab.uk/";
     private static final String UPDATE_MANIFEST = "https://update.lunarlab.uk/latest.json";
-    private static final String TRUSTED_GAME_HOST = "d1.lunarlab.uk";
+    private static final String BOOTSTRAP_GAME_HOST = "d1.lunarlab.uk";
     private static final String TRUSTED_UPDATE_HOST = "update.lunarlab.uk";
     private static final String INSTALL_ACTION = "uk.lunarlab.dtam.INSTALL_RESULT";
     private static final int REQ_AUDIO = 41;
@@ -57,6 +57,8 @@ public final class MainActivity extends Activity {
     private File pendingInstall;
     private boolean receiverRegistered;
     private boolean updateChecked;
+    private boolean launchMigrationPending;
+    private String trustedGameOrigin;
 
     private final BroadcastReceiver installReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -89,14 +91,14 @@ public final class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         registerInstallReceiver();
         createWebView();
-        webView.loadUrl(resolveLaunchUrl(getIntent()));
+        loadGameUrl(resolveLaunchUrl(getIntent()));
         main.postDelayed(this::checkForUpdate, 900);
     }
 
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        if (webView != null) webView.loadUrl(resolveLaunchUrl(intent));
+        if (webView != null) loadGameUrl(resolveLaunchUrl(intent));
     }
 
     private void createWebView() {
@@ -110,11 +112,19 @@ public final class MainActivity extends Activity {
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
-        s.setUserAgentString(s.getUserAgentString() + " DTAM-Android/3.0.1");
+        s.setUserAgentString(s.getUserAgentString() + " DTAM-Android/3.0.2");
 
         webView.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (!request.isForMainFrame()) return false;
                 return routeUrl(request.getUrl());
+            }
+            @Override public void onPageFinished(WebView view, String url) {
+                Uri uri = Uri.parse(url);
+                if (launchMigrationPending && isHttpsUri(uri)) {
+                    trustedGameOrigin = originOf(uri);
+                    launchMigrationPending = false;
+                }
             }
             @Override public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 return routeUrl(Uri.parse(url));
@@ -130,9 +140,16 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void loadGameUrl(String url) {
+        launchMigrationPending = true;
+        trustedGameOrigin = null;
+        webView.loadUrl(url);
+    }
+
     private boolean routeUrl(Uri uri) {
-        if (isTrustedGameUri(uri)) return false;
-        if (!"https".equalsIgnoreCase(uri.getScheme())) return true;
+        if (!isHttpsUri(uri)) return true;
+        String origin = originOf(uri);
+        if (launchMigrationPending || (origin != null && origin.equals(trustedGameOrigin))) return false;
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, uri));
         } catch (Exception ignored) {}
@@ -141,7 +158,11 @@ public final class MainActivity extends Activity {
 
     private void handleWebPermission(PermissionRequest request) {
         Uri origin = request.getOrigin();
-        if (!isTrustedGameUri(origin)) {
+        String requestOrigin = originOf(origin);
+        String currentOrigin = webView == null || webView.getUrl() == null ? null : originOf(Uri.parse(webView.getUrl()));
+        boolean trusted = requestOrigin != null && (requestOrigin.equals(trustedGameOrigin)
+                || (launchMigrationPending && requestOrigin.equals(currentOrigin)));
+        if (!trusted) {
             request.deny();
             return;
         }
@@ -178,7 +199,7 @@ public final class MainActivity extends Activity {
     private String resolveLaunchUrl(Intent intent) {
         Uri data = intent == null ? null : intent.getData();
         if (data != null) {
-            if (isTrustedGameUri(data)) return data.toString();
+            if (isBootstrapGameUri(data)) return data.toString();
             if ("dtam".equalsIgnoreCase(data.getScheme()) && "join".equalsIgnoreCase(data.getHost())) {
                 String room = data.getQueryParameter("room");
                 if ((room == null || !room.matches("\\d{2}")) && data.getPathSegments().size() > 0) {
@@ -190,8 +211,18 @@ public final class MainActivity extends Activity {
         return HOME;
     }
 
-    private static boolean isTrustedGameUri(Uri uri) {
-        return uri != null && "https".equalsIgnoreCase(uri.getScheme()) && TRUSTED_GAME_HOST.equalsIgnoreCase(uri.getHost());
+    private static boolean isBootstrapGameUri(Uri uri) {
+        return isHttpsUri(uri) && BOOTSTRAP_GAME_HOST.equalsIgnoreCase(uri.getHost());
+    }
+
+    private static boolean isHttpsUri(Uri uri) {
+        return uri != null && "https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null;
+    }
+
+    private static String originOf(Uri uri) {
+        if (!isHttpsUri(uri)) return null;
+        int port = uri.getPort();
+        return "https://" + uri.getHost().toLowerCase(Locale.ROOT) + (port > 0 && port != 443 ? ":" + port : "");
     }
 
     private void checkForUpdate() {
@@ -225,7 +256,7 @@ public final class MainActivity extends Activity {
         c.setReadTimeout(4000);
         c.setUseCaches(false);
         c.setRequestProperty("Cache-Control", "no-cache");
-        c.setRequestProperty("User-Agent", "DTAM-Android/3.0.1");
+        c.setRequestProperty("User-Agent", "DTAM-Android/3.0.2");
         try (InputStream in = new BufferedInputStream(c.getInputStream())) {
             if (c.getResponseCode() / 100 != 2) throw new IllegalStateException("HTTP " + c.getResponseCode());
             byte[] buf = new byte[8192];
@@ -249,7 +280,7 @@ public final class MainActivity extends Activity {
         c.setConnectTimeout(4000);
         c.setReadTimeout(20000);
         c.setInstanceFollowRedirects(true);
-        c.setRequestProperty("User-Agent", "DTAM-Android/3.0.1");
+        c.setRequestProperty("User-Agent", "DTAM-Android/3.0.2");
         long total = 0;
         try (InputStream in = new BufferedInputStream(c.getInputStream()); OutputStream out = new FileOutputStream(target)) {
             if (c.getResponseCode() / 100 != 2) throw new IllegalStateException("HTTP " + c.getResponseCode());

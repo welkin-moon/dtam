@@ -336,6 +336,8 @@ struct ActiveTask {
 struct Player {
     id: String,
     token: String,
+    #[serde(default)]
+    client_instance_id: String,
     name: String,
     color: String,
     animal: String,
@@ -625,6 +627,16 @@ fn sanitize_name(s: &str) -> String {
     let t = filtered.trim();
     let t = if t.is_empty() { "玩家" } else { t };
     t.chars().take(12).collect()
+}
+fn sanitize_client_instance_id(s: &str) -> String {
+    let t = s.trim();
+    if (16..=64).contains(&t.len())
+        && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        t.to_string()
+    } else {
+        String::new()
+    }
 }
 fn sanitize_text(s: &str) -> String {
     s.chars()
@@ -2759,6 +2771,8 @@ struct WsQuery {
     create: String,
     #[serde(default)]
     token: String,
+    #[serde(default, rename = "client")]
+    client_instance: String,
     #[serde(default, rename = "v")]
     _v: String,
     #[serde(default, rename = "map")]
@@ -2874,6 +2888,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
         return;
     }
     let name = sanitize_name(&q.name);
+    let client_instance_id = sanitize_client_instance_id(&q.client_instance);
     let room_arc = get_room(&state, &q.room).await;
     let (tx, mut rx) = mpsc::channel::<Outgoing>(WS_OUTBOX_CAPACITY);
     let (connection_id, player_id);
@@ -2895,6 +2910,21 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
         };
         let mut resumed = false;
         if let Some(p) = &player_opt {
+            if p.connected {
+                let same_instance = !client_instance_id.is_empty()
+                    && !p.client_instance_id.is_empty()
+                    && p.client_instance_id == client_instance_id;
+                if !same_instance {
+                    let _ = socket
+                        .send(Message::Text(
+                            json!({"t":"error","code":"session_in_use","message":"这个会话正在另一实例中使用，将作为新玩家加入"})
+                                .to_string(),
+                        ))
+                        .await;
+                    let _ = socket.close().await;
+                    return;
+                }
+            }
             if now - p.last_seen <= RECONNECT_GRACE_MS || p.connected {
                 if let Some(old) = rt.clients.get(&p.id) {
                     let _ = old.tx.try_send(Outgoing::Close(4002, "replaced".into()));
@@ -2949,6 +2979,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
             let p = Player {
                 id: id.clone(),
                 token: Uuid::new_v4().to_string(),
+                client_instance_id: client_instance_id.clone(),
                 name: name.clone(),
                 color: next_color(&rt.room),
                 animal: next_animal(&rt.room),
@@ -3000,6 +3031,9 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
         let mut p = player_opt.unwrap();
         if resumed {
             p.token = Uuid::new_v4().to_string();
+        }
+        if !client_instance_id.is_empty() {
+            p.client_instance_id = client_instance_id.clone();
         }
         let prev = rt.room.host_id.clone();
         connection_id = Uuid::new_v4().to_string();
@@ -3151,7 +3185,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
 
 async fn health(State(state): State<AppState>) -> Json<Value> {
     Json(
-        json!({"ok":true,"service":"d1-realtime-pc","version":"2.8","voice":!state.calls_app_id.is_empty()&&!state.calls_secret.is_empty(),"backend":"rust+cloudflared"}),
+        json!({"ok":true,"service":"d1-realtime-pc","version":"2.8.2-session-fence","voice":!state.calls_app_id.is_empty()&&!state.calls_secret.is_empty(),"backend":"rust+cloudflared"}),
     )
 }
 #[derive(Deserialize)]

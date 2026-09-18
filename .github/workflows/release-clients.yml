@@ -81,10 +81,9 @@ jobs:
           DTAM v${VERSION}
 
           - 正式网页：https://d1.lunarlab.uk/
-          - 修复 150×150 权威碰撞网格与主场景/小地图显示不一致的问题。
-          - Web 主循环跟随 requestAnimationFrame，不再以 72 Hz 门槛在高刷屏上离散跳帧；静态墙体使用离屏缓存。
-          - Direct WebRTC 位置同步约 50 Hz，并读取 selected candidate pair 的真实 RTT/TURN 状态；优化高 RTT 平滑与预测。
-          - 新增 Android WebView APK 与 Windows/Android Cloudflare 自更新。
+          - 客户端壳继续保留浏览器房主权威、WebRTC DataChannel、TURN/doorbell/信令增强与 Server fallback；常规更新仍直接走网页。
+          - 新增 client-instance session fencing，允许同名玩家并存，阻止共享 resume token 的另一实例顶掉在线玩家。
+          - Windows 支持 canonical URL 静态重定向；Android 会锁定启动重定向链最终落地的 HTTPS 游戏 origin，便于未来零客户端更新迁移域名。
           - 更新源：https://update.lunarlab.uk/latest.json
 
           SHA-256 见随附 SHA256SUMS.txt。

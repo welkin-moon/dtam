@@ -6,9 +6,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>DTAM</AssemblyName>
     <RootNamespace>DTAM.Client</RootNamespace>
-    <Version>3.0.1</Version>
-    <FileVersion>3.0.1.0</FileVersion>
-    <AssemblyVersion>3.0.1.0</AssemblyVersion>
+    <Version>3.0.2</Version>
+    <FileVersion>3.0.2.0</FileVersion>
+    <AssemblyVersion>3.0.2.0</AssemblyVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>

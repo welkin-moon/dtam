@@ -124,11 +124,12 @@ class BrowserAuthority {
   reject(sock, code, message) { try { sock.send(JSON.stringify({ t: 'error', code, message })); } catch (_) {} setTimeout(() => { try { sock.close(4000, code); } catch (_) {} }, 30); return false; }
   async attachPlayer(sock, params) {
     await this.ready();
-    const create = params.get('create') === '1', name = sanitizeName(params.get('name')), token = String(params.get('token') || ''), t = Date.now(), room = this.room;
+    const create = params.get('create') === '1', name = sanitizeName(params.get('name')), token = String(params.get('token') || ''), rawClientInstance = String(params.get('client') || ''), clientInstance = /^[A-Za-z0-9_-]{16,64}$/.test(rawClientInstance) ? rawClientInstance : '', t = Date.now(), room = this.room;
     if (room.initialized && !Object.keys(room.players).length) room.resetIfEmpty(); room.cleanupExpired(t);
     let player = token ? Object.values(room.players).find(p => p.token === token) : null, resumed = false;
     if (player && player.name !== name) player = null;
     const connectionId = randomId();
+    if (player && player.connected && (!clientInstance || !player.clientInstanceId || player.clientInstanceId !== clientInstance)) return this.reject(sock, 'session_in_use', '这个会话正在另一实例中使用，将作为新玩家加入');
     if (player) {
       if (t - Number(player.lastSeen || t) <= RECONNECT_GRACE_MS || player.connected) { const old = room.socketForPlayer(player.id); if (old && old !== sock) try { old.close(4002, 'replaced'); } catch (_) {} resumed = true; }
       else { delete room.players[player.id]; player = null; }
@@ -140,9 +141,10 @@ class BrowserAuthority {
       if (Object.keys(room.players).length >= MAX_PLAYERS) return this.reject(sock, 'room_full', '房间已满');
       if (create && !room.initialized) { room.initialized = true; room.createdAt = t; }
       const id = randomId();
-      player = { id, token: randomId(), name, color: room.nextColor(), animal: room.nextAnimal(), avatar: '', pos: room.spawnForIndex(Object.keys(room.players).length), connected: true, connectionId, joinedAt: t, lastSeen: t, lastMoveAt: t, lastChatAt: 0, role: '', ghostRole: '', alive: true, tasks: [], fakeTasks: [], completed: [], killReadyAt: 0, abilityReadyAt: 0, abilityUntil: 0, disguiseTargetId: '', hiddenUntil: 0, trackedId: '', trackUntil: 0, ventReadyAt: 0, ventExitAt: 0, protectedUntil: 0, lastCaseId: '', lastCaseArea: '', poisonedBy: '', poisonEndsAt: 0, voiceSessionId: '', voiceTrackName: '', voiceEnabled: false, emergencyUsed: 0, inVent: false, ventId: '', activeTask: null };
+      player = { id, token: randomId(), clientInstanceId: clientInstance, name, color: room.nextColor(), animal: room.nextAnimal(), avatar: '', pos: room.spawnForIndex(Object.keys(room.players).length), connected: true, connectionId, joinedAt: t, lastSeen: t, lastMoveAt: t, lastChatAt: 0, role: '', ghostRole: '', alive: true, tasks: [], fakeTasks: [], completed: [], killReadyAt: 0, abilityReadyAt: 0, abilityUntil: 0, disguiseTargetId: '', hiddenUntil: 0, trackedId: '', trackUntil: 0, ventReadyAt: 0, ventExitAt: 0, protectedUntil: 0, lastCaseId: '', lastCaseArea: '', poisonedBy: '', poisonEndsAt: 0, voiceSessionId: '', voiceTrackName: '', voiceEnabled: false, emergencyUsed: 0, inVent: false, ventId: '', activeTask: null };
       room.players[id] = player; if (!room.hostId) room.hostId = id;
     }
+    if (clientInstance) player.clientInstanceId = clientInstance;
     const previousHostId = room.hostId; player.connected = true; player.connectionId = connectionId; player.lastSeen = t; if (!room.players[room.hostId]?.connected) room.electHost();
     sock.serializeAttachment({ playerId: player.id, token: player.token, connectionId }); await room.persistNow(); room.announceHostChange(previousHostId);
     sock.send(JSON.stringify({ t: 'welcome', room: this.roomCode, resumed, self: { id: player.id, token: player.token }, hostId: room.hostId, players: room.publicPlayers(), profiles: room.profiles(), voices: room.voiceDirectory(player), bodies: room.bodies, game: room.publicGame(player.id), selfState: room.selfState(player), p2p: true }));
