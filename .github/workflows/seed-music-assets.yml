@@ -1,0 +1,76 @@
+name: Seed static soundtrack assets
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/seed-music-assets.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate original loopable MOV soundtrack and PNG covers
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v ffmpeg
+          mkdir -p assets/music
+
+          make_track() {
+            out="$1"; f1="$2"; f2="$3"; f3="$4"; rate="$5"
+            ffmpeg -hide_banner -loglevel error -y \
+              -f lavfi -i "sine=frequency=${f1}:sample_rate=44100:duration=16" \
+              -f lavfi -i "sine=frequency=${f2}:sample_rate=44100:duration=16" \
+              -f lavfi -i "sine=frequency=${f3}:sample_rate=44100:duration=16" \
+              -filter_complex "[0:a]volume=0.16,tremolo=f=${rate}:d=0.25[a0];[1:a]volume=0.10,tremolo=f=1:d=0.18[a1];[2:a]volume=0.065,tremolo=f=0.5:d=0.12[a2];[a0][a1][a2]amix=inputs=3:normalize=0,lowpass=f=4200,highpass=f=90,alimiter=limit=0.82[a]" \
+              -map "[a]" -c:a aac -b:a 64k -movflags +faststart "assets/music/${out}.mov"
+          }
+
+          make_cover() {
+            out="$1"; bg="$2"; accent="$3"; grid="$4"
+            ffmpeg -hide_banner -loglevel error -y \
+              -f lavfi -i "color=c=${bg}:s=512x512:d=1" \
+              -vf "drawgrid=width=64:height=64:thickness=2:color=${grid}@0.22,drawbox=x=72:y=72:w=368:h=368:color=${accent}@0.48:t=8,drawbox=x=150:y=150:w=212:h=212:color=${accent}@0.18:t=fill,drawbox=x=208:y=80:w=96:h=352:color=white@0.10:t=4" \
+              -frames:v 1 "assets/music/${out}.png"
+          }
+
+          make_track "夜航" 196 294 392 2
+          make_track "中继站" 220 330 440 4
+          make_track "草间风" 174 262 349 1
+
+          make_cover "夜航" 0x101728 0x7c8cff 0xa9b6ff
+          make_cover "中继站" 0x111a18 0x52d6a7 0xa5f3d0
+          make_cover "草间风" 0x182014 0x95c65c 0xd9f99d
+
+          cat > assets/music/manifest.json <<'JSON'
+          {
+            "schema": 1,
+            "tracks": [
+              {"name": "夜航", "title": "夜航"},
+              {"name": "中继站", "title": "中继站"},
+              {"name": "草间风", "title": "草间风"}
+            ]
+          }
+          JSON
+
+          for f in assets/music/*.mov assets/music/*.png; do
+            test -s "$f"
+          done
+          ffprobe -v error -show_entries format=format_name,duration -of compact=p=0:nk=1 assets/music/夜航.mov
+
+      - name: Commit generated Pages assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/music
+          git commit -m "Add starter static soundtrack assets"
+          git push origin HEAD:main
