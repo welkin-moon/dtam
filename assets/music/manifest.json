@@ -1,4 +1,8 @@
 {
   "schema": 1,
-  "tracks": []
+  "tracks": [
+    {"name": "夜航", "title": "夜航"},
+    {"name": "中继站", "title": "中继站"},
+    {"name": "草间风", "title": "草间风"}
+  ]
 }
