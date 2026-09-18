@@ -267,7 +267,7 @@ class BrowserRoomHost {
     room.announceHostChange(previousHostId);
     authoritySocket.send(JSON.stringify({
       t: 'welcome', room: this.roomCode, resumed,
-      self: { id: player.id, token: player.token, name: player.name }, hostId: room.hostId,
+      self: { id: player.id, token: player.token, name: player.name }, features: { bushVision: true, mapManifest: '/maps/east-beach-v1.json' }, hostId: room.hostId,
       players: room.publicPlayers(), profiles: room.profiles(), voices: room.voiceDirectory(player),
       bodies: room.bodies, game: room.publicGame(player.id), selfState: room.selfState(player),
       p2p: true,
