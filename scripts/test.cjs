@@ -34,7 +34,7 @@ includes(server,'handoff_instance_id','Rust fallback must support explicit recon
 includes(server,'legacy_unbound','Rust fallback must migrate pre-fencing live sessions without breaking reconnect');
 includes(hybrid,'handoff===p.clientInstanceId','Auto P2P authority must allow an explicit stale-instance handoff');
 includes(src,"code==='session_in_use'",'client must recover from a token already owned by another live instance');
-includes(hybrid,"p.clientInstanceId!==client",'Auto browser-host authority must not let another instance replace a live player');
+includes(hybrid,"!(same||legacy||transfer)",'Auto browser-host authority must reject a live unrelated instance while permitting reconnect handoff');
 includes(hybrid,"game.js?v=20260918-v302session4",'transport must load the current session-fencing gameplay bundle');
 includes(src,'directReady:p.directReady===true','Server direct readiness must be represented per player');
 includes(src,'startGameBtn.disabled=count<2||waiting>0','Server matches must wait for every direct transport');
