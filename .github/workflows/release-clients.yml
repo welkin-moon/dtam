@@ -1,4 +1,4 @@
-name: Release clients
+name: Release DTAM bundle
 
 on:
   push:
@@ -9,14 +9,15 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      source_sha: ${{ steps.release.outputs.source_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Resolve release
         id: release
         shell: bash
@@ -32,9 +33,52 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Download and verify Cloudflare client assets
+  server:
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+      - name: Update stable Rust
+        shell: pwsh
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+      - name: Build Windows x64 authoritative server
+        shell: pwsh
         env:
-          VERSION: ${{ steps.release.outputs.version }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          $ErrorActionPreference='Stop'
+          cargo build --release --locked --manifest-path server/Cargo.toml
+          $src='server/target/release/dtam-server.exe'
+          if (-not (Test-Path $src)) { throw 'dtam-server.exe missing' }
+          New-Item -ItemType Directory -Force -Path release-server | Out-Null
+          Copy-Item $src ("release-server/DTAM-Server-Windows-x64-v{0}.exe" -f $env:VERSION)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dtam-release-server
+          path: release-server/*.exe
+          if-no-files-found: error
+
+  release:
+    needs: [prepare, server]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dtam-release-server
+          path: .
+
+      - name: Download and verify signed client assets
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
@@ -54,7 +98,10 @@ jobs:
           [[ "$apk_sha" =~ ^[0-9a-f]{64}$ ]]
 
           win="DTAM-Windows-x64-v${VERSION}.exe"
-          apk="DTAM-Android-v${VERSION}.apk"
+          apk="DTAM-Android-arm64-v${VERSION}.apk"
+          server="DTAM-Server-Windows-x64-v${VERSION}.exe"
+          test -f "$server"
+
           curl -fL --retry 4 --retry-all-errors "$win_url" -o "$win"
           curl -fL --retry 4 --retry-all-errors "$apk_url" -o "$apk"
           test "$(stat -c %s "$win")" = "$win_size"
@@ -63,13 +110,13 @@ jobs:
           echo "$apk_sha  $apk" | sha256sum -c -
 
           zip -j "DTAM-Windows-x64-v${VERSION}.zip" "$win" client/windows/README.md
-          sha256sum "$win" "$apk" "DTAM-Windows-x64-v${VERSION}.zip" > SHA256SUMS.txt
+          sha256sum "$win" "$apk" "$server" "DTAM-Windows-x64-v${VERSION}.zip" > SHA256SUMS.txt
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.release.outputs.version }}
-          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -81,9 +128,9 @@ jobs:
           DTAM v${VERSION}
 
           - 正式网页：https://d1.lunarlab.uk/
-          - 客户端壳继续保留浏览器房主权威、WebRTC DataChannel、TURN/doorbell/信令增强与 Server fallback；常规更新仍直接走网页。
-          - 新增 client-instance session fencing，允许同名玩家并存，阻止共享 resume token 的另一实例顶掉在线玩家。
-          - Windows 支持 canonical URL 静态重定向；Android 会锁定启动重定向链最终落地的 HTTPS 游戏 origin，便于未来零客户端更新迁移域名。
+          - Auto 联机优先独立 Server；Server 不可用时才进入去中心化 P2P fallback。
+          - GitHub Release 同时归档 Windows x64 客户端、Android arm64 可安装 APK 与 Windows x64 authoritative Server。
+          - Android APK 来自 release update source，必须已经使用既有 release certificate 签名；GitHub Actions 不生成替代签名。
           - 更新源：https://update.lunarlab.uk/latest.json
 
           SHA-256 见随附 SHA256SUMS.txt。
@@ -94,5 +141,6 @@ jobs:
             --notes-file RELEASE_NOTES.md \
             "DTAM-Windows-x64-v${VERSION}.exe" \
             "DTAM-Windows-x64-v${VERSION}.zip" \
-            "DTAM-Android-v${VERSION}.apk" \
+            "DTAM-Android-arm64-v${VERSION}.apk" \
+            "DTAM-Server-Windows-x64-v${VERSION}.exe" \
             SHA256SUMS.txt
