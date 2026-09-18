@@ -631,7 +631,8 @@ fn sanitize_name(s: &str) -> String {
 fn sanitize_client_instance_id(s: &str) -> String {
     let t = s.trim();
     if (16..=64).contains(&t.len())
-        && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        && t.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
     {
         t.to_string()
     } else {
