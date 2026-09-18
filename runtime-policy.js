@@ -214,23 +214,14 @@ if (typeof NativePC === 'function') {
   setTimeout(samplePeerConnections, 1200);
 }
 
-class ServerPolicyWebSocket extends NativeWS {
-  constructor(url, protocols) {
-    const cfg = getNetworkConfig();
-    if (cfg.mode !== 'server') {
-      updateDiag({
-        lastError:'P2P 建链失败；当前模式不会尝试家庭 Server',
-        serverSkipped:true,
-      });
-      throw new DOMException('Server fallback is disabled outside Server mode', 'NetworkError');
-    }
-    if (protocols === undefined) super(url); else super(url, protocols);
-  }
-}
-
-Object.defineProperties(ServerPolicyWebSocket, {
-  CONNECTING:{ value:NativeWS.CONNECTING }, OPEN:{ value:NativeWS.OPEN },
-  CLOSING:{ value:NativeWS.CLOSING }, CLOSED:{ value:NativeWS.CLOSED },
+// Transport selection belongs to hybrid-transport.js. Keep the browser WebSocket
+// untouched here so Auto can probe the independent Server first and then fall
+// through to P2P without a second policy wrapper fighting the decision.
+window.WebSocket = NativeWS;
+updateDiag({
+  serverPolicy:'server-primary-auto',
+  serverSkipped:false,
+  turnAvailable:false,
+  voiceBackend:'cloudflare-edge',
+  fastChannel:'unordered-unreliable'
 });
-window.WebSocket = ServerPolicyWebSocket;
-updateDiag({ serverPolicy:'manual-only', turnAvailable:false, voiceBackend:'cloudflare-edge', fastChannel:'unordered-unreliable' });
