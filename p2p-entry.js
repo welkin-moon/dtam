@@ -206,8 +206,7 @@ class BrowserRoomHost {
 
     let player = token ? Object.values(room.players).find(p => p.token === token) : null;
     let resumed = false;
-    if (player && player.name !== name) player = null;
-    const connectionId = randomPeerId();
+        const connectionId = randomPeerId();
     if (player && player.connected) { const same = !!clientInstance && !!player.clientInstanceId && player.clientInstanceId === clientInstance, legacy = !player.clientInstanceId, transfer = !!clientInstance && !!handoffInstance && handoffInstance === player.clientInstanceId && clientInstance !== player.clientInstanceId; if (!(same || legacy || transfer)) return this.reject(authoritySocket, 'session_in_use', '这个会话正在另一实例中使用，将作为新玩家加入'); }
 
     if (player) {
@@ -222,17 +221,18 @@ class BrowserRoomHost {
     }
 
     if (!player) {
+      if (/\d$/.test(name)) return this.reject(authoritySocket, 'name_invalid', '昵称不能以数字结尾；重名时系统会自动添加数字');
       if (create && room.initialized && Object.keys(room.players).length) return this.reject(authoritySocket, 'room_exists', '房间号已存在');
       if (!create && !room.initialized) return this.reject(authoritySocket, 'room_not_found', '房间不存在');
       if (room.phase !== 'lobby') return this.reject(authoritySocket, 'game_in_progress', '游戏已经开始，只能用原会话重连');
       if (Object.keys(room.players).length >= MAX_PLAYERS) return this.reject(authoritySocket, 'room_full', '房间已满');
       if (create && !room.initialized) { room.initialized = true; room.createdAt = now; }
-      const id = randomPeerId();
+      const id = randomPeerId(), used = new Set(Object.values(room.players).map(p => String(p.name || ''))); let assignedName = name; if (used.has(assignedName)) { for (let n = 2; n <= 99; n++) { const suffix = String(n), stem = [...name].slice(0, Math.max(1, 12 - [...suffix].length)).join(''), candidate = stem + suffix; if (!used.has(candidate)) { assignedName = candidate; break; } } }
       player = {
         id,
         token: randomPeerId(),
         clientInstanceId: clientInstance,
-        name,
+        name: assignedName,
         color: room.nextColor(),
         animal: room.nextAnimal(),
         avatar: '',
@@ -267,7 +267,7 @@ class BrowserRoomHost {
     room.announceHostChange(previousHostId);
     authoritySocket.send(JSON.stringify({
       t: 'welcome', room: this.roomCode, resumed,
-      self: { id: player.id, token: player.token }, hostId: room.hostId,
+      self: { id: player.id, token: player.token, name: player.name }, hostId: room.hostId,
       players: room.publicPlayers(), profiles: room.profiles(), voices: room.voiceDirectory(player),
       bodies: room.bodies, game: room.publicGame(player.id), selfState: room.selfState(player),
       p2p: true,
