@@ -1,5 +1,5 @@
 const RULE_KEY='au-dtam-rules-v2';
-const RULE_IDS=['ruleNormalImpostors','ruleShapeshifters','rulePhantoms','ruleVipers','ruleEngineers','ruleScientists','ruleTrackers','ruleNoisemakers','ruleDetectives','ruleGuardianAngels','ruleTasks','ruleSpeed','ruleKill','ruleDiscussion','ruleVoting','ruleEmergency','ruleSabotage','ruleConfirm'];
+const RULE_IDS=['ruleNormalImpostors','ruleShapeshifters','rulePhantoms','ruleVipers','ruleEngineers','ruleScientists','ruleTrackers','ruleNoisemakers','ruleDetectives','ruleGuardianAngels','ruleTasks','ruleSpeed','ruleKill','ruleDiscussion','ruleVoting','ruleEmergency','ruleSabotage','ruleMusicControl','ruleConfirm'];
 const DEBUG_UI=(()=>{try{const q=new URLSearchParams(location.search);return q.get('debug')==='1'||localStorage.getItem('au-dtam-debug')==='1'}catch(_){return false}})();
 if(DEBUG_UI)document.documentElement.classList.add('dtam-debug');
 
