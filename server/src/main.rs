@@ -2258,7 +2258,9 @@ fn handle_vent(rt: &mut RoomRuntime, player_id: &str, action: &str, vent_id: &st
     rt.mark_dirty();
 }
 fn reset_lobby(rt: &mut RoomRuntime, player_id: &str) {
-    if rt.room.host_id != player_id || rt.room.phase != "ended" {
+    if rt.room.phase != "ended"
+        || !rt.room.players.get(player_id).map(|p| p.connected).unwrap_or(false)
+    {
         return;
     }
     rt.room.phase = "lobby".into();
