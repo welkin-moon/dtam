@@ -124,12 +124,12 @@ class BrowserAuthority {
   reject(sock, code, message) { try { sock.send(JSON.stringify({ t: 'error', code, message })); } catch (_) {} setTimeout(() => { try { sock.close(4000, code); } catch (_) {} }, 30); return false; }
   async attachPlayer(sock, params) {
     await this.ready();
-    const create = params.get('create') === '1', name = sanitizeName(params.get('name')), token = String(params.get('token') || ''), rawClientInstance = String(params.get('client') || ''), clientInstance = /^[A-Za-z0-9_-]{16,64}$/.test(rawClientInstance) ? rawClientInstance : '', t = Date.now(), room = this.room;
+    const create = params.get('create') === '1', name = sanitizeName(params.get('name')), token = String(params.get('token') || ''), rawClientInstance = String(params.get('client') || ''), clientInstance = /^[A-Za-z0-9_-]{16,64}$/.test(rawClientInstance) ? rawClientInstance : '', rawHandoffInstance = String(params.get('handoff') || ''), handoffInstance = /^[A-Za-z0-9_-]{16,64}$/.test(rawHandoffInstance) ? rawHandoffInstance : '', t = Date.now(), room = this.room;
     if (room.initialized && !Object.keys(room.players).length) room.resetIfEmpty(); room.cleanupExpired(t);
     let player = token ? Object.values(room.players).find(p => p.token === token) : null, resumed = false;
     if (player && player.name !== name) player = null;
     const connectionId = randomId();
-    if (player && player.connected && (!clientInstance || !player.clientInstanceId || player.clientInstanceId !== clientInstance)) return this.reject(sock, 'session_in_use', '这个会话正在另一实例中使用，将作为新玩家加入');
+    if (player && player.connected) { const same = !!clientInstance && !!player.clientInstanceId && player.clientInstanceId === clientInstance, legacy = !player.clientInstanceId, transfer = !!clientInstance && !!handoffInstance && handoffInstance === player.clientInstanceId && clientInstance !== player.clientInstanceId; if (!(same || legacy || transfer)) return this.reject(sock, 'session_in_use', '这个会话正在另一实例中使用，将作为新玩家加入'); }
     if (player) {
       if (t - Number(player.lastSeen || t) <= RECONNECT_GRACE_MS || player.connected) { const old = room.socketForPlayer(player.id); if (old && old !== sock) try { old.close(4002, 'replaced'); } catch (_) {} resumed = true; }
       else { delete room.players[player.id]; player = null; }
@@ -263,4 +263,4 @@ Object.defineProperties(P2PWebSocket.prototype,{CONNECTING:{value:0},OPEN:{value
 window.WebSocket=P2PWebSocket;
 setBadge('P2P · CF mailbox','自己的 Cloudflare 仅负责短时 SDP mailbox；无需 Durable Objects');
 console.log('DTAM experimental P2P transport',VERSION);
-await import('./game.js?v=20260918-v302session3-cf');
+await import('./game.js?v=20260918-v302session4-cf');
