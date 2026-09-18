@@ -667,4 +667,4 @@ window.WebSocket = P2PWebSocket;
 setBadge('P2P · 准备中', '房主浏览器权威 + WebRTC DataChannel；失败时尝试家中 rt-d1');
 console.log('DTAM experimental P2P browser-host transport', VERSION);
 
-await import('./game.js?v=2.8.1-p2p1');
+await import('./game.js?v=20260918-v302session1-p2p');

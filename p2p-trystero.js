@@ -389,4 +389,4 @@ Object.defineProperties(P2PWebSocket.prototype, {
 window.WebSocket = P2PWebSocket;
 setBadge('P2P · Nostr rendezvous', '不使用自己的 Worker/DO；公共网络仅负责发现，数据走 WebRTC');
 console.log('DTAM P2P browser-host experiment', VERSION);
-await import('./game.js?v=2.8.1-p2p-nostr1');
+await import('./game.js?v=20260918-v302session1-nostr');
