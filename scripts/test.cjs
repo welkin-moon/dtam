@@ -7,6 +7,7 @@ const hybrid=fs.readFileSync('hybrid-transport.js','utf8');
 const playerCss=fs.readFileSync('player-shell.css','utf8');
 const worker=fs.readFileSync('worker.js','utf8');
 const polish=fs.readFileSync('game-polish.js','utf8');
+const server=fs.readFileSync('server/src/main.rs','utf8');
 
 function assert(condition,message){if(!condition)throw new Error(`[2.8 test] ${message}`);}
 function includes(haystack,needle,message){assert(haystack.includes(needle),message);}
