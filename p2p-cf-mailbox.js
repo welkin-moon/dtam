@@ -127,27 +127,27 @@ class BrowserAuthority {
     const create = params.get('create') === '1', name = sanitizeName(params.get('name')), token = String(params.get('token') || ''), rawClientInstance = String(params.get('client') || ''), clientInstance = /^[A-Za-z0-9_-]{16,64}$/.test(rawClientInstance) ? rawClientInstance : '', rawHandoffInstance = String(params.get('handoff') || ''), handoffInstance = /^[A-Za-z0-9_-]{16,64}$/.test(rawHandoffInstance) ? rawHandoffInstance : '', t = Date.now(), room = this.room;
     if (room.initialized && !Object.keys(room.players).length) room.resetIfEmpty(); room.cleanupExpired(t);
     let player = token ? Object.values(room.players).find(p => p.token === token) : null, resumed = false;
-    if (player && player.name !== name) player = null;
-    const connectionId = randomId();
+        const connectionId = randomId();
     if (player && player.connected) { const same = !!clientInstance && !!player.clientInstanceId && player.clientInstanceId === clientInstance, legacy = !player.clientInstanceId, transfer = !!clientInstance && !!handoffInstance && handoffInstance === player.clientInstanceId && clientInstance !== player.clientInstanceId; if (!(same || legacy || transfer)) return this.reject(sock, 'session_in_use', '这个会话正在另一实例中使用，将作为新玩家加入'); }
     if (player) {
       if (t - Number(player.lastSeen || t) <= RECONNECT_GRACE_MS || player.connected) { const old = room.socketForPlayer(player.id); if (old && old !== sock) try { old.close(4002, 'replaced'); } catch (_) {} resumed = true; }
       else { delete room.players[player.id]; player = null; }
     }
     if (!player) {
+      if (/\d$/.test(name)) return this.reject(sock, 'name_invalid', '昵称不能以数字结尾；重名时系统会自动添加数字');
       if (create && room.initialized && Object.keys(room.players).length) return this.reject(sock, 'room_exists', '房间号已存在');
       if (!create && !room.initialized) return this.reject(sock, 'room_not_found', '房间不存在');
       if (room.phase !== 'lobby') return this.reject(sock, 'game_in_progress', '游戏已经开始，只能用原会话重连');
       if (Object.keys(room.players).length >= MAX_PLAYERS) return this.reject(sock, 'room_full', '房间已满');
       if (create && !room.initialized) { room.initialized = true; room.createdAt = t; }
-      const id = randomId();
-      player = { id, token: randomId(), clientInstanceId: clientInstance, name, color: room.nextColor(), animal: room.nextAnimal(), avatar: '', pos: room.spawnForIndex(Object.keys(room.players).length), connected: true, connectionId, joinedAt: t, lastSeen: t, lastMoveAt: t, lastChatAt: 0, role: '', ghostRole: '', alive: true, tasks: [], fakeTasks: [], completed: [], killReadyAt: 0, abilityReadyAt: 0, abilityUntil: 0, disguiseTargetId: '', hiddenUntil: 0, trackedId: '', trackUntil: 0, ventReadyAt: 0, ventExitAt: 0, protectedUntil: 0, lastCaseId: '', lastCaseArea: '', poisonedBy: '', poisonEndsAt: 0, voiceSessionId: '', voiceTrackName: '', voiceEnabled: false, emergencyUsed: 0, inVent: false, ventId: '', activeTask: null };
+      const id = randomId(), used = new Set(Object.values(room.players).map(p => String(p.name || ''))); let assignedName = name; if (used.has(assignedName)) { for (let n = 2; n <= 99; n++) { const suffix = String(n), stem = [...name].slice(0, Math.max(1, 12 - [...suffix].length)).join(''), candidate = stem + suffix; if (!used.has(candidate)) { assignedName = candidate; break; } } }
+      player = { id, token: randomId(), clientInstanceId: clientInstance, name: assignedName, color: room.nextColor(), animal: room.nextAnimal(), avatar: '', pos: room.spawnForIndex(Object.keys(room.players).length), connected: true, connectionId, joinedAt: t, lastSeen: t, lastMoveAt: t, lastChatAt: 0, role: '', ghostRole: '', alive: true, tasks: [], fakeTasks: [], completed: [], killReadyAt: 0, abilityReadyAt: 0, abilityUntil: 0, disguiseTargetId: '', hiddenUntil: 0, trackedId: '', trackUntil: 0, ventReadyAt: 0, ventExitAt: 0, protectedUntil: 0, lastCaseId: '', lastCaseArea: '', poisonedBy: '', poisonEndsAt: 0, voiceSessionId: '', voiceTrackName: '', voiceEnabled: false, emergencyUsed: 0, inVent: false, ventId: '', activeTask: null };
       room.players[id] = player; if (!room.hostId) room.hostId = id;
     }
     if (clientInstance) player.clientInstanceId = clientInstance;
     const previousHostId = room.hostId; player.connected = true; player.connectionId = connectionId; player.lastSeen = t; if (!room.players[room.hostId]?.connected) room.electHost();
     sock.serializeAttachment({ playerId: player.id, token: player.token, connectionId }); await room.persistNow(); room.announceHostChange(previousHostId);
-    sock.send(JSON.stringify({ t: 'welcome', room: this.roomCode, resumed, self: { id: player.id, token: player.token }, hostId: room.hostId, players: room.publicPlayers(), profiles: room.profiles(), voices: room.voiceDirectory(player), bodies: room.bodies, game: room.publicGame(player.id), selfState: room.selfState(player), p2p: true }));
+    sock.send(JSON.stringify({ t: 'welcome', room: this.roomCode, resumed, self: { id: player.id, token: player.token, name: player.name }, hostId: room.hostId, players: room.publicPlayers(), profiles: room.profiles(), voices: room.voiceDirectory(player), bodies: room.bodies, game: room.publicGame(player.id), selfState: room.selfState(player), p2p: true }));
     if (!resumed) room.broadcast({ t: 'notice', text: `${player.name} 加入了房间` }, player.id); room.broadcastState(); await room.scheduleNextAlarm(); return true;
   }
   async receive(sock, data) { try { await this.room.webSocketMessage(sock, data); } catch (e) { console.warn('[P2P] packet', e); } }
