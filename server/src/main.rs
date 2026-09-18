@@ -2774,6 +2774,8 @@ struct WsQuery {
     token: String,
     #[serde(default, rename = "client")]
     client_instance: String,
+    #[serde(default, rename = "handoff")]
+    handoff_instance: String,
     #[serde(default, rename = "v")]
     _v: String,
     #[serde(default, rename = "map")]
@@ -2890,6 +2892,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
     }
     let name = sanitize_name(&q.name);
     let client_instance_id = sanitize_client_instance_id(&q.client_instance);
+    let handoff_instance_id = sanitize_client_instance_id(&q.handoff_instance);
     let room_arc = get_room(&state, &q.room).await;
     let (tx, mut rx) = mpsc::channel::<Outgoing>(WS_OUTBOX_CAPACITY);
     let (connection_id, player_id);
@@ -2915,7 +2918,12 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
                 let same_instance = !client_instance_id.is_empty()
                     && !p.client_instance_id.is_empty()
                     && p.client_instance_id == client_instance_id;
-                if !same_instance {
+                let legacy_unbound = p.client_instance_id.is_empty();
+                let valid_handoff = !client_instance_id.is_empty()
+                    && client_instance_id != p.client_instance_id
+                    && !handoff_instance_id.is_empty()
+                    && handoff_instance_id == p.client_instance_id;
+                if !(same_instance || legacy_unbound || valid_handoff) {
                     let _ = socket
                         .send(Message::Text(
                             json!({"t":"error","code":"session_in_use","message":"这个会话正在另一实例中使用，将作为新玩家加入"})
@@ -3186,7 +3194,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
 
 async fn health(State(state): State<AppState>) -> Json<Value> {
     Json(
-        json!({"ok":true,"service":"d1-realtime-pc","version":"2.8.2-session-fence","voice":!state.calls_app_id.is_empty()&&!state.calls_secret.is_empty(),"backend":"rust+cloudflared"}),
+        json!({"ok":true,"service":"d1-realtime-pc","version":"2.8.3-reconnect-fence","voice":!state.calls_app_id.is_empty()&&!state.calls_secret.is_empty(),"backend":"rust+cloudflared"}),
     )
 }
 #[derive(Deserialize)]
