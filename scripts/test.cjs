@@ -34,12 +34,14 @@ includes(src,"navigator.locks?.request",'modern clients must use Web Locks for l
 includes(src,"acquireHeldClientLock",'client ownership must use a held browser lock, not only timer leases');
 includes(src,"await clientInstanceReady",'room connection must wait for client instance ownership to settle');
 includes(src,"prepareResumeHandoff",'crash/restart recovery must prove the old browser instance is no longer live');
+includes(src,"nav==='reload'?2500:0",'fast reloads must briefly wait for the previous document lock instead of losing identity');
+includes(src,"acquireHeldClientLock(resumeHandoffFrom,2500)",'crash handoff must tolerate a short socket/document teardown race without allowing an unbounded takeover');
 includes(server,'handoff_instance_id','Rust fallback must support explicit reconnect handoff');
 includes(server,'legacy_unbound','Rust fallback must migrate pre-fencing live sessions without breaking reconnect');
 includes(hybrid,'handoff===p.clientInstanceId','Auto P2P authority must allow an explicit stale-instance handoff');
 includes(src,"code==='session_in_use'",'client must recover from a token already owned by another live instance');
 includes(hybrid,"!(same||legacy||transfer)",'Auto browser-host authority must reject a live unrelated instance while permitting reconnect handoff');
-includes(hybrid,"game.js?v=20260918-v302session5",'transport must load the current session-fencing gameplay bundle');
+includes(hybrid,"game.js?v=20260918-v302session6",'transport must load the current session-fencing gameplay bundle');
 includes(src,'directReady:p.directReady===true','Server direct readiness must be represented per player');
 includes(src,'startGameBtn.disabled=count<2||waiting>0','Server matches must wait for every direct transport');
 includes(src,"const POS_SEND_INTERVAL_DIRECT = 20",'direct P2P movement must target about 50 Hz');
@@ -54,7 +56,7 @@ includes(src,"function remoteSmoothingRate()",'remote smoothing must adapt to th
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
 includes(html,'/styles.css?v=20260829-ux1','current UX cache-busted stylesheet must be loaded');
-includes(html,'/hybrid-transport.js?v=20260918-v302session5','current transport entry must be loaded');
+includes(html,'/hybrid-transport.js?v=20260918-v302session6','current transport entry must be loaded');
 excludes(headers,'immutable','runtime assets must never pin mixed protocol versions');
 includes(headers,'Cache-Control: no-cache, max-age=0, must-revalidate','runtime assets must revalidate');
 includes(html,'maxlength="2"','room input must be two digits');
@@ -72,7 +74,7 @@ includes(src,'function handleGameShortcut(e)','desktop gameplay shortcuts must b
 includes(src,'const PLAYER_VISUAL_RADIUS = 0.56','player sprites must have a readable visual size without changing collision radius');
 includes(src,'function drawObjectiveHint(view,p)','offscreen tasks and urgent repairs must have direction guidance');
 includes(src,"label=pl.id===myPlayerId?'你':shown.name",'the local player label must stay concise in crowded spawns');
-includes(hybrid,"game.js?v=20260918-v302session5",'transport must load the current gameplay/performance bundle');
+includes(hybrid,"game.js?v=20260918-v302session6",'transport must load the current gameplay/performance bundle');
 includes(hybrid,"game-polish.js?v=20260829-ux1",'transport must load the current polish bundle');
 includes(playerCss,'DTAM UX FLOW 20260829','player shell must include the current lobby layout layer');
 excludes(polish,'stopImmediatePropagation()','typing, shortcuts, and IME input must not be swallowed by a capture guard');
