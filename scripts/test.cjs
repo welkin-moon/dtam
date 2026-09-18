@@ -43,7 +43,7 @@ includes(src,"function remoteSmoothingRate()",'remote smoothing must adapt to th
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
 includes(html,'/styles.css?v=20260829-ux1','current UX cache-busted stylesheet must be loaded');
-includes(html,'/hybrid-transport.js?v=20260908-v301perf1','current transport entry must be loaded');
+includes(html,'/hybrid-transport.js?v=20260918-v302session1','current transport entry must be loaded');
 excludes(headers,'immutable','runtime assets must never pin mixed protocol versions');
 includes(headers,'Cache-Control: no-cache, max-age=0, must-revalidate','runtime assets must revalidate');
 includes(html,'maxlength="2"','room input must be two digits');
