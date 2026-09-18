@@ -292,6 +292,8 @@ struct Settings {
     emergency_meetings: i64,
     sabotage_cooldown: i64,
     confirm_ejects: bool,
+    #[serde(default = "default_music_control")]
+    music_control: String,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -315,8 +317,22 @@ impl Default for Settings {
             emergency_meetings: 1,
             sabotage_cooldown: 20,
             confirm_ejects: true,
+            music_control: default_music_control(),
         }
     }
+}
+
+fn default_music_control() -> String {
+    "all".into()
+}
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct MusicState {
+    track: String,
+    playing: bool,
+    position_ms: i64,
+    changed_at: i64,
 }
 
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -445,6 +461,8 @@ struct Room {
     reason: String,
     meeting: Option<Meeting>,
     settings: Settings,
+    #[serde(default)]
+    music: MusicState,
     sabotage: Option<Sabotage>,
     sabotage_ready_at: i64,
     door_lock_until: i64,
@@ -464,6 +482,7 @@ impl Default for Room {
             reason: String::new(),
             meeting: None,
             settings: Settings::default(),
+            music: MusicState::default(),
             sabotage: None,
             sabotage_ready_at: 0,
             door_lock_until: 0,
@@ -966,6 +985,12 @@ fn normalize_settings(raw: &Value, base: &Settings) -> Settings {
             .get("confirmEjects")
             .and_then(Value::as_bool)
             .unwrap_or(base.confirm_ejects),
+        music_control: match raw.get("musicControl").and_then(Value::as_str) {
+            Some("host") => "host".into(),
+            Some("all") => "all".into(),
+            _ if base.music_control == "host" => "host".into(),
+            _ => "all".into(),
+        },
     }
 }
 
@@ -1004,7 +1029,7 @@ fn public_sabotage(s: &Sabotage) -> Value {
 }
 fn public_game(room: &Room, my_id: &str) -> Value {
     let (d, t) = task_progress(room);
-    json!({"phase":room.phase,"winner":room.winner,"reason":room.reason,"taskDone":d,"taskTotal":t,"meeting":room.meeting.as_ref().map(|m|public_meeting(m,my_id)).unwrap_or(Value::Null),"settings":room.settings,"sabotage":room.sabotage.as_ref().map(public_sabotage).unwrap_or(Value::Null),"doorLockUntil":room.door_lock_until})
+    json!({"phase":room.phase,"winner":room.winner,"reason":room.reason,"taskDone":d,"taskTotal":t,"meeting":room.meeting.as_ref().map(|m|public_meeting(m,my_id)).unwrap_or(Value::Null),"settings":room.settings,"music":room.music,"sabotage":room.sabotage.as_ref().map(public_sabotage).unwrap_or(Value::Null),"doorLockUntil":room.door_lock_until})
 }
 
 fn elect_host(room: &mut Room) {
@@ -2501,6 +2526,47 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
                 rt.mark_dirty();
             }
         }
+        "music" => {
+            let allowed = rt.room.settings.music_control != "host" || rt.room.host_id == player_id;
+            if !allowed {
+                rt.send_to(player_id,json!({"t":"action_fail","code":"music_forbidden","message":"当前仅房主可以切换音乐"}));
+                return true;
+            }
+            let requested = msg
+                .get("track")
+                .and_then(Value::as_str)
+                .unwrap_or(&rt.room.music.track)
+                .trim()
+                .chars()
+                .take(80)
+                .collect::<String>();
+            if requested.contains('/')
+                || requested.contains('\')
+                || requested.contains("..")
+                || requested.chars().any(char::is_control)
+            {
+                rt.send_to(player_id,json!({"t":"action_fail","code":"music_invalid","message":"曲目名称无效"}));
+                return true;
+            }
+            let playing = msg
+                .get("playing")
+                .and_then(Value::as_bool)
+                .unwrap_or(rt.room.music.playing);
+            let position_ms = msg
+                .get("positionMs")
+                .and_then(Value::as_f64)
+                .map(|v| v.round() as i64)
+                .unwrap_or(rt.room.music.position_ms)
+                .clamp(0, 24 * 60 * 60 * 1000);
+            rt.room.music = MusicState {
+                track: requested,
+                playing,
+                position_ms,
+                changed_at: now_ms(),
+            };
+            rt.broadcast(json!({"t":"music","music":rt.room.music}), None);
+            rt.mark_dirty();
+        }
         "start" => start_game(rt, player_id),
         "task_begin" => begin_task(
             rt,
@@ -3247,7 +3313,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
 
 async fn health(State(state): State<AppState>) -> Json<Value> {
     Json(
-        json!({"ok":true,"service":"d1-realtime-pc","version":"2.8.5-map-visibility","voice":!state.calls_app_id.is_empty()&&!state.calls_secret.is_empty(),"backend":"rust+cloudflared"}),
+        json!({"ok":true,"service":"d1-realtime-pc","version":"2.8.6-music-map","voice":!state.calls_app_id.is_empty()&&!state.calls_secret.is_empty(),"backend":"rust+cloudflared"}),
     )
 }
 #[derive(Deserialize)]
