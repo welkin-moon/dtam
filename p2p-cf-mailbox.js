@@ -1,4 +1,4 @@
-import { GameRoom } from './worker.js?v=20260918-archmusic1';
+import { GameRoom } from './worker.js?v=20260919-servergate1';
 
 const NativeWebSocket = window.WebSocket;
 const NativeRTCPeerConnection = window.RTCPeerConnection;
@@ -147,7 +147,7 @@ class BrowserAuthority {
     if (clientInstance) player.clientInstanceId = clientInstance;
     const previousHostId = room.hostId; player.connected = true; player.connectionId = connectionId; player.lastSeen = t; if (!room.players[room.hostId]?.connected) room.electHost();
     sock.serializeAttachment({ playerId: player.id, token: player.token, connectionId }); await room.persistNow(); room.announceHostChange(previousHostId);
-    sock.send(JSON.stringify({ t: 'welcome', room: this.roomCode, resumed, self: { id: player.id, token: player.token, name: player.name }, features: { bushVision: true, mapManifest: '/maps/east-beach-v1.json' }, hostId: room.hostId, players: room.publicPlayers(), profiles: room.profiles(), voices: room.voiceDirectory(player), bodies: room.bodies, game: room.publicGame(player.id), selfState: room.selfState(player), p2p: true }));
+    sock.send(JSON.stringify({ t: 'welcome', room: this.roomCode, resumed, self: { id: player.id, token: player.token, name: player.name }, features: { bushVision: true, mapManifest: '/maps/east-beach-v1.json', musicSync: true, roomIdentityV2: true, p2pFallbackV2: true }, hostId: room.hostId, players: room.publicPlayers(), profiles: room.profiles(), voices: room.voiceDirectory(player), bodies: room.bodies, game: room.publicGame(player.id), selfState: room.selfState(player), p2p: true }));
     if (!resumed) room.broadcast({ t: 'notice', text: `${player.name} 加入了房间` }, player.id); room.broadcastState(); await room.scheduleNextAlarm(); return true;
   }
   async receive(sock, data) { try { await this.room.webSocketMessage(sock, data); } catch (e) { console.warn('[P2P] packet', e); } }
