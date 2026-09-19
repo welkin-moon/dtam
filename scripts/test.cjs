@@ -41,7 +41,7 @@ includes(server,'legacy_unbound','Rust fallback must migrate pre-fencing live se
 includes(hybrid,'handoff===p.clientInstanceId','Auto P2P authority must allow an explicit stale-instance handoff');
 includes(src,"code==='session_in_use'",'client must recover from a token already owned by another live instance');
 includes(hybrid,"!(same||legacy||transfer)",'Auto browser-host authority must reject a live unrelated instance while permitting reconnect handoff');
-includes(hybrid,"game.js?v=20260918-v302session6",'transport must load the current session-fencing gameplay bundle');
+includes(hybrid,"game.js?v=20260918-archmusic1",'transport must load the current session-fencing gameplay bundle');
 includes(src,'directReady:p.directReady===true','Server direct readiness must be represented per player');
 includes(src,'startGameBtn.disabled=count<2||waiting>0','Server matches must wait for every direct transport');
 includes(src,"const POS_SEND_INTERVAL_DIRECT = 20",'direct P2P movement must target about 50 Hz');
@@ -56,7 +56,7 @@ includes(src,"function remoteSmoothingRate()",'remote smoothing must adapt to th
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
 includes(html,'/styles.css?v=20260829-ux1','current UX cache-busted stylesheet must be loaded');
-includes(html,'/hybrid-transport.js?v=20260918-v302session6','current transport entry must be loaded');
+includes(html,'/hybrid-transport.js?v=20260918-archmusic1','current transport entry must be loaded');
 excludes(headers,'immutable','runtime assets must never pin mixed protocol versions');
 includes(headers,'Cache-Control: no-cache, max-age=0, must-revalidate','runtime assets must revalidate');
 includes(html,'maxlength="2"','room input must be two digits');
@@ -74,8 +74,8 @@ includes(src,'function handleGameShortcut(e)','desktop gameplay shortcuts must b
 includes(src,'const PLAYER_VISUAL_RADIUS = 0.56','player sprites must have a readable visual size without changing collision radius');
 includes(src,'function drawObjectiveHint(view,p)','offscreen tasks and urgent repairs must have direction guidance');
 includes(src,"label=pl.id===myPlayerId?'你':shown.name",'the local player label must stay concise in crowded spawns');
-includes(hybrid,"game.js?v=20260918-v302session6",'transport must load the current gameplay/performance bundle');
-includes(hybrid,"game-polish.js?v=20260829-ux1",'transport must load the current polish bundle');
+includes(hybrid,"game.js?v=20260918-archmusic1",'transport must load the current gameplay/performance bundle');
+includes(hybrid,"game-polish.js?v=20260918-archmusic1",'transport must load the current polish bundle');
 includes(playerCss,'DTAM UX FLOW 20260829','player shell must include the current lobby layout layer');
 excludes(polish,'stopImmediatePropagation()','typing, shortcuts, and IME input must not be swallowed by a capture guard');
 includes(polish,"u.searchParams.set('room',code)",'copied invite links must carry the room code');
@@ -98,7 +98,7 @@ includes(worker,"this.phase==='playing'||this.phase==='meeting'",'meeting phase 
 includes(src,'function roleCapacity(st,count)','lobby must validate role capacity before starting');
 includes(src,'职业数量会按当前人数校验；超出可用名额时需调整后才能开始。','lobby copy must describe hard role-capacity validation');
 excludes(src,'由服务器自动裁剪','lobby must not claim impossible role settings are silently clipped');
-includes(src,'hasNetworkLineOfSight(myPos,pos)','client action targeting must respect canonical wall line-of-sight');
+includes(src,'canSeePlayerPosition(myPos,pos)','client action targeting must respect wall line-of-sight and bush concealment');
 includes(src,'taskRequestTimer=setTimeout','task loading must have a bounded request timeout');
 includes(src,'closeToolOverlays(true)','meeting/end transitions must force-close stale gameplay overlays');
 includes(src,'id="endRoster"','end screen must reveal the final role roster');
@@ -113,5 +113,24 @@ includes(worker,'p.activeTask=null;','meetings must invalidate active task chall
 includes(worker,"'role_capacity'",'authority must reject impossible role configurations rather than silently clipping');
 includes(worker,"t:'repair_ok',stationId,done",'final sabotage repair must acknowledge the repairing player');
 includes(worker,"t:'guardian_assigned'",'vote ejection must be able to assign guardian angel');
+includes(src,"requestedNameValid=v=>!/\\d$/.test(sanitizeName(v))",'requested nicknames must not end in digits');
+includes(worker,'uniquePlayerName(players,base)','browser authority must allocate duplicate display-name suffixes');
+includes(server,'fn unique_player_name(room: &Room, base: &str)','Rust authority must allocate duplicate display-name suffixes');
+includes(hybrid,"find(x=>x.token===token)",'resume identity must be token-based rather than display-name-based');
+includes(hybrid,"tryServerPrimary()",'Auto transport must probe the independent Server first');
+includes(hybrid,"room_not_found')return abandon('房间不在 Server，转 P2P')",'Server absence of a fallback-created room must fall through to P2P');
+includes(hybrid,'startHeartbeat()','P2P fallback authority must maintain a low-rate liveness lease');
+includes(hybrid,'.slice(0,2)','P2P fallback must keep two recovery standbys');
+includes(src,'function bushRegionAt(pos)','client must model bush concealment regions');
+includes(src,'function canSeePlayerPosition(viewer,target)','client visibility must combine wall LOS with bush concealment');
+includes(worker,'function canSeePlayer(a,b,doorsClosed=false)','browser authority must enforce bush concealment');
+includes(server,'fn can_see_player(a: &Pos, b: &Pos, doors_closed: bool)','Rust authority must enforce bush concealment');
+includes(src,'id="musicPlayer"','client must expose the shared mini soundtrack player');
+includes(src,"musicAsset(name,ext){return '/assets/music/'",'soundtrack media must be served as static Pages assets');
+includes(src,"musicControl:ruleMusicControl.value==='host'?'host':'all'",'waiting room must select host-only or all-player soundtrack control');
+includes(worker,"if(msg.t==='music')",'browser authority must synchronize music state');
+includes(server,'"music" => {','Rust authority must synchronize music state');
+includes(playerCss,'@keyframes dtam-cover-groove','soundtrack cover must animate while playing');
+
 
 console.log('[2.8 test] ok');
