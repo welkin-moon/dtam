@@ -125,7 +125,7 @@ includes(src,'function bushRegionAt(pos)','client must model bush concealment re
 includes(src,'function canSeePlayerPosition(viewer,target)','client visibility must combine wall LOS with bush concealment');
 includes(worker,'function canSeePlayer(a,b,doorsClosed=false)','browser authority must enforce bush concealment');
 includes(server,'fn can_see_player(a: &Pos, b: &Pos, doors_closed: bool)','Rust authority must enforce bush concealment');
-includes(src,'id="musicPlayer"','client must expose the shared mini soundtrack player');
+includes(src,"music.id='musicPlayer'",'client must expose the shared mini soundtrack player');
 includes(src,"musicAsset(name,ext){return '/assets/music/'",'soundtrack media must be served as static Pages assets');
 includes(src,"musicControl:ruleMusicControl.value==='host'?'host':'all'",'waiting room must select host-only or all-player soundtrack control');
 includes(worker,"if(msg.t==='music')",'browser authority must synchronize music state');
