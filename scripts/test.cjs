@@ -7,6 +7,8 @@ const hybrid=fs.readFileSync('hybrid-transport.js','utf8');
 const playerCss=fs.readFileSync('player-shell.css','utf8');
 const worker=fs.readFileSync('worker.js','utf8');
 const polish=fs.readFileSync('game-polish.js','utf8');
+const signalBudget=fs.readFileSync('signal-budget.js','utf8');
+const signalWorker=fs.readFileSync('workers/p2p-signal-v2.js','utf8');
 const server=fs.readFileSync('server/src/main.rs','utf8');
 
 function assert(condition,message){if(!condition)throw new Error(`[2.8 test] ${message}`);}
@@ -131,6 +133,11 @@ includes(src,"musicControl:ruleMusicControl.value==='host'?'host':'all'",'waitin
 includes(worker,"if(msg.t==='music')",'browser authority must synchronize music state');
 includes(server,'"music" => {','Rust authority must synchronize music state');
 includes(playerCss,'@keyframes dtam-cover-groove','soundtrack cover must animate while playing');
+includes(html,'/signal-budget.js?v=20260919-lowcf1','Pages must load the low-CF join budget policy');
+includes(signalBudget,'const BELL_VISIBLE_MS = 8000','healthy doorbell must reduce D1 join polling to a slow safety net');
+includes(signalBudget,"window.__DTAM_BELL__",'join budget must react to live doorbell health');
+includes(signalWorker,"version:'2.4'",'deployed signalling source must expose the optimized version');
+includes(signalWorker,'LEFT JOIN peers p ON p.room=r.room','hot host mailbox reads must use a single D1 query');
 
 
 console.log('[2.8 test] ok');

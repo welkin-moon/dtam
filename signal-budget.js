@@ -2,10 +2,11 @@ const NativeFetch = window.fetch.bind(window);
 const SIGNAL_HOST = 'p2p-signal.lunarlab.uk';
 const FAST_MS = 1200;
 const VISIBLE_STEPS = [1200, 1600, 2100, 2600, 3000];
-// A hidden browser-host must still discover a reconnect quickly enough for the
-// client-side 20 s room connection deadline. 5 s keeps the worst case
-// (poll + host ICE + guest ICE) below that deadline while remaining tiny
-// compared with the Workers/D1 free quotas.
+// When the hibernatable doorbell is healthy it is the primary join wakeup.
+// Keep D1 polling only as a safety net for a lost bell notification. 8-10 s
+// still leaves room for ICE setup inside the 20 s client connection budget.
+const BELL_VISIBLE_MS = 8000;
+const BELL_HIDDEN_MS = 10000;
 const HIDDEN_MS = 5000;
 const states = new Map();
 const stats = window.__DTAM_SIGNAL_BUDGET__ = {
@@ -21,6 +22,11 @@ function isJoinPoll(input, init) {
     const u = new URL(input instanceof Request ? input.url : String(input), location.href);
     return u.hostname === SIGNAL_HOST && /^\/v2\/rooms\/\d{2}\/joins$/.test(u.pathname) ? u : null;
   } catch (_) { return null; }
+}
+
+function bellPrimary(room) {
+  const bell = window.__DTAM_BELL__;
+  return bell?.connected === true && String(bell.room || '') === String(room || '');
 }
 
 function synthetic(state) {
@@ -45,11 +51,19 @@ window.fetch = async function budgetedFetch(input, init = {}) {
   }
 
   const key = pollUrl.pathname;
-  const state = states.get(key) || { nextAt: 0, emptyStreak: 0, epoch: 1, roomState: 'lobby' };
+  const room = (pollUrl.pathname.match(/^\/v2\/rooms\/(\d{2})\/joins$/) || [])[1] || '';
+  const state = states.get(key) || { nextAt: 0, emptyStreak: 0, epoch: 1, roomState: 'lobby', bellPrimary: false };
   const now = Date.now();
-  const visibleInterval = VISIBLE_STEPS[Math.min(state.emptyStreak, VISIBLE_STEPS.length - 1)];
-  const interval = document.hidden ? HIDDEN_MS : visibleInterval;
+  const bell = bellPrimary(room);
+  if (state.bellPrimary !== bell) {
+    state.bellPrimary = bell;
+    state.nextAt = 0;
+    state.emptyStreak = 0;
+  }
+  const visibleInterval = bell ? BELL_VISIBLE_MS : VISIBLE_STEPS[Math.min(state.emptyStreak, VISIBLE_STEPS.length - 1)];
+  const interval = document.hidden ? (bell ? BELL_HIDDEN_MS : HIDDEN_MS) : visibleInterval;
   stats.currentIntervalMs = interval;
+  stats.bellPrimary = bell;
   if (now < state.nextAt) {
     stats.suppressedPolls++;
     return synthetic(state);
@@ -64,9 +78,13 @@ window.fetch = async function budgetedFetch(input, init = {}) {
     state.epoch = Number(data.epoch || state.epoch || 1);
     state.roomState = String(data.state || state.roomState || 'lobby');
     state.emptyStreak = peers.length ? 0 : Math.min(state.emptyStreak + 1, VISIBLE_STEPS.length - 1);
-    const nextInterval = document.hidden ? HIDDEN_MS : VISIBLE_STEPS[Math.min(state.emptyStreak, VISIBLE_STEPS.length - 1)];
-    state.nextAt = Date.now() + Math.max(FAST_MS, nextInterval - FAST_MS / 3);
+    const bellNow = bellPrimary(room);
+    state.bellPrimary = bellNow;
+    const nextVisible = bellNow ? BELL_VISIBLE_MS : VISIBLE_STEPS[Math.min(state.emptyStreak, VISIBLE_STEPS.length - 1)];
+    const nextInterval = document.hidden ? (bellNow ? BELL_HIDDEN_MS : HIDDEN_MS) : nextVisible;
+    state.nextAt = Date.now() + Math.max(FAST_MS, bellNow ? nextInterval : nextInterval - FAST_MS / 3);
     stats.currentIntervalMs = nextInterval;
+    stats.bellPrimary = bellNow;
   } catch (_) {
     state.nextAt = Date.now() + FAST_MS;
   }
