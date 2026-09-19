@@ -128,19 +128,26 @@ jobs:
           rustup component add rustfmt
           rustc --version
           cargo --version
-      - name: Parse installer script
+      - name: Parse installer scripts
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path 'scripts/install-v3.ps1'),
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            exit 1
+          foreach ($path in @(
+            'scripts/install-v3.ps1',
+            'server/installer/install-server.ps1',
+            'server/installer/run-server.ps1',
+            'server/installer/uninstall-server.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$path: $($_.Message)" }
+              exit 1
+            }
           }
       - name: Build v3 Tray for Windows x64
         shell: pwsh
