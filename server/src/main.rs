@@ -2541,7 +2541,7 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
                 .take(80)
                 .collect::<String>();
             if requested.contains('/')
-                || requested.contains('\')
+                || requested.contains('\\')
                 || requested.contains("..")
                 || requested.chars().any(char::is_control)
             {
