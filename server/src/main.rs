@@ -655,7 +655,11 @@ fn sanitize_name(s: &str) -> String {
     t.chars().take(12).collect()
 }
 fn requested_name_valid(name: &str) -> bool {
-    !name.chars().last().map(|c| c.is_ascii_digit()).unwrap_or(false)
+    !name
+        .chars()
+        .last()
+        .map(|c| c.is_ascii_digit())
+        .unwrap_or(false)
 }
 fn unique_player_name(room: &Room, base: &str) -> String {
     let used: HashSet<&str> = room.players.values().map(|p| p.name.as_str()).collect();
@@ -671,7 +675,15 @@ fn unique_player_name(room: &Room, base: &str) -> String {
             return candidate;
         }
     }
-    format!("玩家{}", Uuid::new_v4().simple().to_string().chars().take(4).collect::<String>())
+    format!(
+        "玩家{}",
+        Uuid::new_v4()
+            .simple()
+            .to_string()
+            .chars()
+            .take(4)
+            .collect::<String>()
+    )
 }
 fn sanitize_client_instance_id(s: &str) -> String {
     let t = s.trim();
@@ -1665,7 +1677,12 @@ fn use_ability(rt: &mut RoomRuntime, player_id: &str, target_id: &str) {
             let Some(t) = target else {
                 return;
             };
-            if t.id == me.id || !t.connected || !t.alive || dist(&me.pos, &t.pos) > 1.8 || !can_see_player(&me.pos, &t.pos, rt.room.door_lock_until > now) {
+            if t.id == me.id
+                || !t.connected
+                || !t.alive
+                || dist(&me.pos, &t.pos) > 1.8
+                || !can_see_player(&me.pos, &t.pos, rt.room.door_lock_until > now)
+            {
                 return;
             }
             if let Some(p) = rt.room.players.get_mut(player_id) {
@@ -2284,7 +2301,12 @@ fn handle_vent(rt: &mut RoomRuntime, player_id: &str, action: &str, vent_id: &st
 }
 fn reset_lobby(rt: &mut RoomRuntime, player_id: &str) {
     if rt.room.phase != "ended"
-        || !rt.room.players.get(player_id).map(|p| p.connected).unwrap_or(false)
+        || !rt
+            .room
+            .players
+            .get(player_id)
+            .map(|p| p.connected)
+            .unwrap_or(false)
     {
         return;
     }
@@ -2545,7 +2567,10 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
                 || requested.contains("..")
                 || requested.chars().any(char::is_control)
             {
-                rt.send_to(player_id,json!({"t":"action_fail","code":"music_invalid","message":"曲目名称无效"}));
+                rt.send_to(
+                    player_id,
+                    json!({"t":"action_fail","code":"music_invalid","message":"曲目名称无效"}),
+                );
                 return true;
             }
             let playing = msg
