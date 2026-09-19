@@ -1,4 +1,4 @@
-import { GameRoom } from './worker.js?v=20260918-archmusic1';
+import { GameRoom } from './worker.js?v=20260919-servergate1';
 
 const NativeWebSocket = window.WebSocket;
 const FALLBACK_HOST = 'rt-d1.lunarlab.uk';
@@ -174,7 +174,7 @@ class BrowserAuthority {
     await room.persistNow();
     room.announceHostChange(previousHostId);
     sock.send(JSON.stringify({
-      t: 'welcome', room: this.roomCode, resumed, self: { id: player.id, token: player.token, name: player.name }, features: { bushVision: true, mapManifest: '/maps/east-beach-v1.json' }, hostId: room.hostId,
+      t: 'welcome', room: this.roomCode, resumed, self: { id: player.id, token: player.token, name: player.name }, features: { bushVision: true, mapManifest: '/maps/east-beach-v1.json', musicSync: true, roomIdentityV2: true, p2pFallbackV2: true }, hostId: room.hostId,
       players: room.publicPlayers(), profiles: room.profiles(), voices: room.voiceDirectory(player), bodies: room.bodies,
       game: room.publicGame(player.id), selfState: room.selfState(player), p2p: true,
     }));
