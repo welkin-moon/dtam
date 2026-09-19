@@ -3219,7 +3219,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
             },
         );
         announce_host_change(&rt, &prev);
-        rt.send_to(&player_id,json!({"t":"welcome","room":q.room,"mapId":MAP_PROTOCOL_ID,"resumed":resumed,"self":{"id":p.id,"token":p.token,"name":p.name},"features":{"bushVision":true,"mapManifest":"/maps/east-beach-v1.json"},"hostId":rt.room.host_id,"players":public_players(&rt.room),"profiles":profiles(&rt.room),"voices":voice_directory(&rt.room,Some(&p)),"bodies":rt.room.bodies,"game":public_game(&rt.room,&p.id),"selfState":self_state(&rt.room,&p)}));
+        rt.send_to(&player_id,json!({"t":"welcome","room":q.room,"mapId":MAP_PROTOCOL_ID,"resumed":resumed,"self":{"id":p.id,"token":p.token,"name":p.name},"features":{"bushVision":true,"mapManifest":"/maps/east-beach-v1.json","musicSync":true,"roomIdentityV2":true,"serverPrimaryV2":true},"hostId":rt.room.host_id,"players":public_players(&rt.room),"profiles":profiles(&rt.room),"voices":voice_directory(&rt.room,Some(&p)),"bodies":rt.room.bodies,"game":public_game(&rt.room,&p.id),"selfState":self_state(&rt.room,&p)}));
         if !resumed {
             rt.broadcast(
                 json!({"t":"notice","text":format!("{} 加入了房间",p.name)}),
