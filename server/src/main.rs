@@ -1701,7 +1701,12 @@ fn use_ability(rt: &mut RoomRuntime, player_id: &str, target_id: &str) {
             let Some(t) = target else {
                 return;
             };
-            if t.id == me.id || !t.connected || !t.alive || dist(&me.pos, &t.pos) > 1.8 || !can_see_player(&me.pos, &t.pos, rt.room.door_lock_until > now) {
+            if t.id == me.id
+                || !t.connected
+                || !t.alive
+                || dist(&me.pos, &t.pos) > 1.8
+                || !can_see_player(&me.pos, &t.pos, rt.room.door_lock_until > now)
+            {
                 return;
             }
             if t.last_case_id.is_empty() || t.last_case_area.is_empty() {
