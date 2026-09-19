@@ -46,7 +46,7 @@ jobs:
         run: |
           rustup update stable --no-self-update
           rustup default stable
-      - name: Build Windows x64 authoritative server
+      - name: Build Windows x64 authoritative server installer
         shell: pwsh
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -55,12 +55,25 @@ jobs:
           cargo build --release --locked --manifest-path server/Cargo.toml
           $src='server/target/release/dtam-server.exe'
           if (-not (Test-Path $src)) { throw 'dtam-server.exe missing' }
+          Copy-Item $src 'server/installer/dtam-server.exe' -Force
+
+          $iscc=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          if (-not (Test-Path $iscc)) { throw 'ISCC.exe missing after installation' }
+
           New-Item -ItemType Directory -Force -Path release-server | Out-Null
-          Copy-Item $src ("release-server/DTAM-Server-Windows-x64-v{0}.exe" -f $env:VERSION)
+          $out=(Resolve-Path 'release-server').Path
+          & $iscc "/DMyAppVersion=$env:VERSION" "/O$out" 'server\installer\DTAM-Server.iss'
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed: $LASTEXITCODE" }
+
+          $setup=("release-server/DTAM-Server-Setup-v{0}.exe" -f $env:VERSION)
+          if (-not (Test-Path $setup)) { throw "server installer missing: $setup" }
       - uses: actions/upload-artifact@v4
         with:
           name: dtam-release-server
-          path: release-server/*.exe
+          path: release-server/DTAM-Server-Setup-v*.exe
           if-no-files-found: error
 
   release:
@@ -99,7 +112,7 @@ jobs:
 
           win="DTAM-Windows-x64-v${VERSION}.exe"
           apk="DTAM-Android-arm64-v${VERSION}.apk"
-          server="DTAM-Server-Windows-x64-v${VERSION}.exe"
+          server="DTAM-Server-Setup-v${VERSION}.exe"
           test -f "$server"
 
           curl -fL --retry 4 --retry-all-errors "$win_url" -o "$win"
@@ -129,7 +142,7 @@ jobs:
 
           - 正式网页：https://d1.lunarlab.uk/
           - Auto 联机优先独立 Server；Server 不可用时才进入去中心化 P2P fallback。
-          - GitHub Release 同时归档 Windows x64 客户端、Android arm64 可安装 APK 与 Windows x64 authoritative Server。
+          - GitHub Release 同时归档 Windows x64 客户端、Android arm64 可安装 APK 与 Windows x64 Server 安装器。
           - Android APK 来自 release update source，必须已经使用既有 release certificate 签名；GitHub Actions 不生成替代签名。
           - 更新源：https://update.lunarlab.uk/latest.json
 
@@ -142,5 +155,5 @@ jobs:
             "DTAM-Windows-x64-v${VERSION}.exe" \
             "DTAM-Windows-x64-v${VERSION}.zip" \
             "DTAM-Android-arm64-v${VERSION}.apk" \
-            "DTAM-Server-Windows-x64-v${VERSION}.exe" \
+            "DTAM-Server-Setup-v${VERSION}.exe" \
             SHA256SUMS.txt
