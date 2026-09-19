@@ -1,0 +1,102 @@
+name: Release DTAM server installer
+
+on:
+  push:
+    branches:
+      - 'server-release-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-server:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve server release
+        id: release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $version=$env:GITHUB_REF_NAME -replace '^server-release-v',''
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "bad server release branch: $env:GITHUB_REF_NAME" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Update stable Rust
+        shell: pwsh
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+
+      - name: Build authoritative server
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          cargo build --release --locked --manifest-path server/Cargo.toml
+          $src='server/target/release/dtam-server.exe'
+          if (-not (Test-Path $src)) { throw 'dtam-server.exe missing' }
+          Copy-Item $src 'server/installer/dtam-server.exe' -Force
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $iscc=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          if (-not (Test-Path $iscc)) { throw 'ISCC.exe missing after installation' }
+
+      - name: Build server installer
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force -Path release-server | Out-Null
+          $iscc=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          $out=(Resolve-Path 'release-server').Path
+          & $iscc "/DMyAppVersion=$env:VERSION" "/O$out" 'server\installer\DTAM-Server.iss'
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed: $LASTEXITCODE" }
+          $setup="release-server\DTAM-Server-Setup-v$env:VERSION.exe"
+          if (-not (Test-Path $setup)) { throw "installer missing: $setup" }
+          Get-FileHash $setup -Algorithm SHA256 | ForEach-Object {
+            "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))"
+          } | Set-Content -Encoding ascii 'release-server\SHA256SUMS-server.txt'
+
+      - name: Create server GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="server-v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "release $tag already exists" >&2
+            exit 3
+          fi
+          cat > RELEASE_NOTES.md <<EOF
+          DTAM Server v${VERSION}
+
+          Windows x64 installer:
+          - installs/upgrades the authoritative Rust server
+          - defaults to an existing C:\\server or D:\\server layout when present
+          - preserves config\\server.json and data across upgrades/uninstall
+          - registers and starts the SYSTEM/AtStartup task: DTAM Rust Server
+          - the default template binds 127.0.0.1:28727
+
+          The installer never contains Calls/TURN secrets. Existing server.json is not overwritten.
+
+          SHA-256 is included in SHA256SUMS-server.txt.
+          EOF
+          gh release create "$tag" \
+            --target "$GITHUB_SHA" \
+            --title "DTAM Server v$VERSION" \
+            --notes-file RELEASE_NOTES.md \
+            "release-server/DTAM-Server-Setup-v${VERSION}.exe" \
+            "release-server/SHA256SUMS-server.txt"
