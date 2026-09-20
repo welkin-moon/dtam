@@ -1,20 +1,28 @@
 # DTAM soundtrack assets
 
-Each soundtrack entry is a basename in `manifest.json`.
+Do not hand-edit `manifest.json`. Cloudflare Pages runs `scripts/generate-music-manifest.cjs` on every build and scans this directory automatically.
 
-For a track named `夜航`, Pages serves:
+To add a track, upload an audio file here. A cover with the same basename is optional:
 
-- `/assets/music/夜航.mov` — the loopable soundtrack media.
-- `/assets/music/夜航.png` — square cover art used by the in-game mini player.
-
-The authority only synchronizes the basename, play/pause state, and timeline timestamp. Media bytes are never proxied through the realtime Server, Durable Objects, or signalling Workers.
-
-Keep names free of `/`, `\\`, control characters, and `..`. The client URL-encodes Unicode basenames.
-
-MOV files should use codecs supported by Chromium/WebView. AAC audio in an MP4/MOV-compatible container is the current target. Covers should be reasonably small PNG files because they are static Pages assets.
-
-Example manifest entry:
-
-```json
-{"name":"夜航","title":"夜航"}
+```text
+assets/music/
+├─ 夜航.mov
+├─ 夜航.png
+├─ My Song.mp3
+└─ My Song.webp
 ```
+
+Supported audio extensions, in preference order when the same basename exists more than once:
+
+- `.m4a`
+- `.mp3`
+- `.mov`
+- `.mp4`
+- `.webm`
+- `.ogg`
+
+Supported cover extensions are `.png`, `.webp`, `.jpg`, and `.jpeg`. If no matching cover exists, the track is still added and the player simply has no cover.
+
+The build writes a schema-2 manifest containing the encoded static asset paths. Media bytes are served directly by Pages/CDN and never pass through the realtime Server, Durable Objects, or signalling Workers.
+
+Keep basenames at 80 characters or fewer and avoid `..`, slashes, backslashes, and control characters.
