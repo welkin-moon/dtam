@@ -43,7 +43,7 @@ includes(server,'legacy_unbound','Rust fallback must migrate pre-fencing live se
 includes(hybrid,'handoff===p.clientInstanceId','Auto P2P authority must allow an explicit stale-instance handoff');
 includes(src,"code==='session_in_use'",'client must recover from a token already owned by another live instance');
 includes(hybrid,"!(same||legacy||transfer)",'Auto browser-host authority must reject a live unrelated instance while permitting reconnect handoff');
-includes(hybrid,"game.js?v=20260918-archmusic1",'transport must load the current session-fencing gameplay bundle');
+includes(hybrid,"game.js?v=20260920-musicauto1",'transport must load the current session-fencing gameplay bundle');
 includes(src,'directReady:p.directReady===true','Server direct readiness must be represented per player');
 includes(src,'startGameBtn.disabled=count<2||waiting>0','Server matches must wait for every direct transport');
 includes(src,"const POS_SEND_INTERVAL_DIRECT = 20",'direct P2P movement must target about 50 Hz');
@@ -76,7 +76,7 @@ includes(src,'function handleGameShortcut(e)','desktop gameplay shortcuts must b
 includes(src,'const PLAYER_VISUAL_RADIUS = 0.56','player sprites must have a readable visual size without changing collision radius');
 includes(src,'function drawObjectiveHint(view,p)','offscreen tasks and urgent repairs must have direction guidance');
 includes(src,"label=pl.id===myPlayerId?'你':shown.name",'the local player label must stay concise in crowded spawns');
-includes(hybrid,"game.js?v=20260918-archmusic1",'transport must load the current gameplay/performance bundle');
+includes(hybrid,"game.js?v=20260920-musicauto1",'transport must load the current gameplay/performance bundle');
 includes(hybrid,"game-polish.js?v=20260918-archmusic1",'transport must load the current polish bundle');
 includes(playerCss,'DTAM UX FLOW 20260829','player shell must include the current lobby layout layer');
 excludes(polish,'stopImmediatePropagation()','typing, shortcuts, and IME input must not be swallowed by a capture guard');
