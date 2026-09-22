@@ -2056,6 +2056,7 @@ fn start_meeting(rt: &mut RoomRuntime, player_id: &str, body_id: &str, reason: &
         p.disguise_target_id.clear();
         p.hidden_until = 0;
         p.ability_until = 0;
+        p.active_task = None;
     }
     let de = now + rt.room.settings.discussion * 1000;
     rt.room.meeting = Some(Meeting {
