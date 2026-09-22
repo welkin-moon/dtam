@@ -529,47 +529,32 @@ function drawMap(view,p){
   for(const v of VENT_DEFS){if(Math.abs(v.x-cameraX)>half+1||Math.abs(v.y-cameraY)>half+1)continue;const x=left+(v.x-worldLeft)*tilePx,y=top+(v.y-worldTop)*tilePx;ctx.fillStyle=p.wallEdge;ctx.strokeStyle=p.muted;ctx.lineWidth=1.5;ctx.beginPath();ctx.ellipse(x,y,tilePx*.28,tilePx*.16,0,0,Math.PI*2);ctx.fill();ctx.stroke();}
   for(const b of bodies){if(Math.abs(b.x-cameraX)>half+1||Math.abs(b.y-cameraY)>half+1)continue;if(selfState.alive&&!hasNetworkLineOfSight(myPos,b))continue;const x=left+(b.x-worldLeft)*tilePx,y=top+(b.y-worldTop)*tilePx;ctx.save();ctx.translate(x,y);ctx.fillStyle=b.color||p.body;ctx.beginPath();ctx.arc(-tilePx*.12,0,tilePx*.18,0,Math.PI*2);ctx.arc(tilePx*.12,0,tilePx*.18,0,Math.PI*2);ctx.fill();ctx.strokeStyle=p.danger;ctx.lineWidth=Math.max(2,tilePx*.05);ctx.beginPath();ctx.moveTo(0,-tilePx*.18);ctx.lineTo(0,tilePx*.18);ctx.stroke();ctx.restore();}
   ctx.restore();
-}function drawAnimalSprite(x,y,r,color,animal,outline,{moving=false,dir=1,phase=0}={}){
-  const stride=moving?Math.sin(phase):0,bob=moving?Math.abs(Math.sin(phase))*r*.08:Math.sin(phase*.22)*r*.018,squash=1+(moving?Math.cos(phase*2)*.045:Math.sin(phase*.18)*.018);
-  ctx.save();ctx.translate(x,y+bob);
-  ctx.save();ctx.globalAlpha=.22;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(0,r*.53,r*.68,r*.18,0,0,Math.PI*2);ctx.fill();ctx.restore();
-  ctx.scale(dir,1);
-  const legY=r*.38,step=r*.17*stride;
-  ctx.strokeStyle=outline;ctx.lineWidth=Math.max(2,r*.105);ctx.lineCap='round';
-  ctx.beginPath();ctx.moveTo(-r*.28,legY);ctx.lineTo(-r*.31-step,legY+r*.27);ctx.moveTo(r*.25,legY);ctx.lineTo(r*.28+step,legY+r*.27);ctx.stroke();
-  ctx.save();ctx.scale(squash,1/squash);ctx.fillStyle=color;ctx.strokeStyle=outline;ctx.lineWidth=Math.max(1.6,r*.075);ctx.beginPath();ctx.ellipse(-r*.05,0,r*.69,r*.55,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore();
-  ctx.save();ctx.globalAlpha=.15;ctx.fillStyle='#fff';ctx.beginPath();ctx.ellipse(-r*.22,-r*.13,r*.31,r*.22,-.45,0,Math.PI*2);ctx.fill();ctx.restore();
-  const hx=r*.30,hy=-r*.42;
-  ctx.fillStyle=color;ctx.strokeStyle=outline;ctx.lineWidth=Math.max(1.5,r*.07);
-  if(animal==='rabbit'){
-    const earSwing=moving?stride*.08:Math.sin(phase*.35)*.04;
-    for(const ex of [-.17,.17]){ctx.save();ctx.translate(hx+ex*r,hy-r*.22);ctx.rotate(ex+earSwing);ctx.beginPath();ctx.ellipse(0,-r*.34,r*.13,r*.42,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.globalAlpha=.55;ctx.fillStyle='#f9a8d4';ctx.beginPath();ctx.ellipse(0,-r*.34,r*.055,r*.28,0,0,Math.PI*2);ctx.fill();ctx.restore();}
-  }else if(animal==='cat'||animal==='fox'){
-    ctx.beginPath();ctx.moveTo(hx-r*.39,hy-r*.1);ctx.lineTo(hx-r*.22,hy-r*.55);ctx.lineTo(hx-r*.02,hy-r*.25);ctx.closePath();ctx.fill();ctx.stroke();
-    ctx.beginPath();ctx.moveTo(hx+r*.04,hy-r*.28);ctx.lineTo(hx+r*.31,hy-r*.56);ctx.lineTo(hx+r*.42,hy-r*.04);ctx.closePath();ctx.fill();ctx.stroke();
-  }else if(animal==='goat'){
-    ctx.fillStyle='#e5e7eb';ctx.beginPath();ctx.arc(hx-r*.26,hy-r*.35,r*.13,Math.PI*.9,Math.PI*2.05);ctx.stroke();ctx.beginPath();ctx.arc(hx+r*.18,hy-r*.36,r*.13,Math.PI*.95,Math.PI*2.05);ctx.stroke();ctx.fillStyle=color;
-  }else if(animal==='chicken'){
-    ctx.fillStyle='#ef4444';for(const ex of [-.13,0,.13]){ctx.beginPath();ctx.arc(hx+ex*r,hy-r*.38-Math.abs(ex)*r*.25,r*.11,0,Math.PI*2);ctx.fill();}
+}const ANIMAL_SPRITE_SHEET=new Image();
+ANIMAL_SPRITE_SHEET.decoding='async';
+ANIMAL_SPRITE_SHEET.src='/assets/animals/front-pixel-v1.png';
+const ANIMAL_SPRITE_ROWS={fox:0,cat:1,goat:2,chicken:3,rabbit:4,raccoon:5};
+const ANIMAL_SHEET_COLS=5,ANIMAL_SHEET_ROWS=6,ANIMAL_SHEET_W=362,ANIMAL_SHEET_H=272;
+function drawPixelAnimalSprite(x,y,r,animal,{moving=false,phase=0}={}){
+  const row=ANIMAL_SPRITE_ROWS[animal]??ANIMAL_SPRITE_ROWS.cat;
+  const frame=moving?1+(Math.floor(phase*1.35)%4+4)%4:0;
+  const sw=ANIMAL_SHEET_W/ANIMAL_SHEET_COLS,sh=ANIMAL_SHEET_H/ANIMAL_SHEET_ROWS;
+  const sx=frame*sw,sy=row*sh;
+  const dw=r*2.75,dh=r*2.06;
+  ctx.save();
+  ctx.imageSmoothingEnabled=false;
+  if(ANIMAL_SPRITE_SHEET.complete&&ANIMAL_SPRITE_SHEET.naturalWidth){
+    ctx.drawImage(ANIMAL_SPRITE_SHEET,sx,sy,sw,sh,x-dw/2,y-dh*.62,dw,dh);
+  }else{
+    ctx.fillStyle='#f8fafc';ctx.strokeStyle='#111827';ctx.lineWidth=Math.max(1,r*.08);
+    ctx.fillRect(x-r*.42,y-r*.55,r*.84,r*.84);ctx.strokeRect(x-r*.42,y-r*.55,r*.84,r*.84);
   }
-  ctx.fillStyle=color;ctx.strokeStyle=outline;ctx.beginPath();ctx.ellipse(hx,hy,r*.43,r*.40,0,0,Math.PI*2);ctx.fill();ctx.stroke();
-  if(animal==='raccoon'){ctx.fillStyle='#374151';ctx.beginPath();ctx.ellipse(hx+r*.02,hy-r*.03,r*.35,r*.16,-.08,0,Math.PI*2);ctx.fill();}
-  const eyeX=hx+r*.18,eyeY=hy-r*.08;ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(eyeX,eyeY,r*.095,0,Math.PI*2);ctx.fill();ctx.fillStyle='#111827';ctx.beginPath();ctx.arc(eyeX+r*.024,eyeY,r*.047,0,Math.PI*2);ctx.fill();
-  if(animal==='chicken'){ctx.fillStyle='#f59e0b';ctx.beginPath();ctx.moveTo(hx+r*.39,hy+r*.02);ctx.lineTo(hx+r*.66,hy+r*.13);ctx.lineTo(hx+r*.39,hy+r*.22);ctx.closePath();ctx.fill();}
-  else{ctx.fillStyle=outline;ctx.beginPath();ctx.arc(hx+r*.35,hy+r*.12,r*.055,0,Math.PI*2);ctx.fill();}
-  const tailWave=Math.sin(phase*.75)*r*.12;
-  if(animal==='cat'||animal==='fox'||animal==='raccoon'){
-    ctx.strokeStyle=animal==='raccoon'?'#6b7280':color;ctx.lineWidth=animal==='fox'?r*.26:r*.18;ctx.beginPath();ctx.moveTo(-r*.62,r*.04);ctx.quadraticCurveTo(-r*1.02,-r*.18+tailWave,-r*.78,-r*.48+tailWave);ctx.stroke();
-    if(animal==='raccoon'){ctx.strokeStyle='#374151';ctx.lineWidth=r*.07;for(let q=0;q<3;q++){ctx.beginPath();ctx.moveTo(-r*(.78+.06*q),-r*(.14+.1*q)+tailWave);ctx.lineTo(-r*(.91+.04*q),-r*(.21+.1*q)+tailWave);ctx.stroke();}}
-  }else if(animal==='rabbit'){ctx.fillStyle='#f8fafc';ctx.strokeStyle=outline;ctx.beginPath();ctx.arc(-r*.67,-r*.02,r*.22,0,Math.PI*2);ctx.fill();ctx.stroke();}
-  else if(animal==='goat'){ctx.strokeStyle=outline;ctx.lineWidth=r*.08;ctx.beginPath();ctx.moveTo(hx+r*.02,hy+r*.32);ctx.lineTo(hx+r*.06,hy+r*.58);ctx.stroke();}
   ctx.restore();
 }
 function drawPlayers(view,p){
   const {left,top,tilePx,cameraX,cameraY}=view,now=Date.now(),lights=gameState.sabotage?.type==='lights'&&isCrewRole(selfState.role)&&selfState.alive,vision=3.1,drawList=[];
   for(const id in players){const pl=players[id];if(!pl.connected)continue;if(pl.inVent&&pl.id!==myPlayerId)continue;if(!pl.alive&&selfState.alive&&pl.id!==myPlayerId)continue;if(pl.hiddenUntil>now&&pl.id!==myPlayerId)continue;const visual=remoteVisuals[pl.id],px=pl.id===myPlayerId?myPos.x:(visual?visual.x:pl.pos.x),py=pl.id===myPlayerId?myPos.y:(visual?visual.y:pl.pos.y);if(Math.abs(px-cameraX)>VIEW_TILES/2+1||Math.abs(py-cameraY)>VIEW_TILES/2+1)continue;if(pl.id!==myPlayerId&&selfState.alive&&!canSeePlayerPosition(myPos,{x:px,y:py}))continue;if(lights&&pl.id!==myPlayerId&&Math.hypot(px-myPos.x,py-myPos.y)>vision)continue;let shown=pl;if(pl.abilityUntil>now&&pl.disguiseTargetId&&players[pl.disguiseTargetId])shown=players[pl.disguiseTargetId];drawList.push({pl,shown,x:left+(px-(cameraX-VIEW_TILES/2))*tilePx,y:top+(py-(cameraY-VIEW_TILES/2))*tilePx});}
   drawList.sort((a,b)=>Number(a.pl.id===myPlayerId)-Number(b.pl.id===myPlayerId));
-  for(const item of drawList){const {pl,shown,x,y}=item,r=PLAYER_VISUAL_RADIUS*tilePx,v=remoteVisuals[pl.id],selfMove=pl.id===myPlayerId&&(joyActive||keys.ArrowUp||keys.ArrowDown||keys.ArrowLeft||keys.ArrowRight||keys.w||keys.W||keys.a||keys.A||keys.s||keys.S||keys.d||keys.D),speed=pl.id===myPlayerId?(selfMove?1:0):Math.hypot(Number(v?.vx||0),Number(v?.vy||0)),moving=speed>.08;if(pl.id!==myPlayerId&&Math.abs(Number(v?.vx||0))>.03)animalFacing[pl.id]=v.vx<0?-1:1;const dir=animalFacing[pl.id]||1,seed=[...String(pl.id)].reduce((n,c)=>n+c.charCodeAt(0),0)%31,phase=performance.now()*.009+seed;ctx.save();if(!pl.alive)ctx.globalAlpha=.38;drawAnimalSprite(x,y,r,shown.color,shown.animal||'chicken',pl.id===myPlayerId?p.text:'rgba(0,0,0,.45)',{moving,dir,phase});ctx.restore();item.r=r;}
+  for(const item of drawList){const {pl,shown,x,y}=item,r=PLAYER_VISUAL_RADIUS*tilePx,v=remoteVisuals[pl.id],selfMove=pl.id===myPlayerId&&(joyActive||keys.ArrowUp||keys.ArrowDown||keys.ArrowLeft||keys.ArrowRight||keys.w||keys.W||keys.a||keys.A||keys.s||keys.S||keys.d||keys.D),speed=pl.id===myPlayerId?(selfMove?1:0):Math.hypot(Number(v?.vx||0),Number(v?.vy||0)),moving=speed>.08,seed=[...String(pl.id)].reduce((n,c)=>n+c.charCodeAt(0),0)%31,phase=performance.now()*.010+seed;ctx.save();if(!pl.alive)ctx.globalAlpha=.38;drawPixelAnimalSprite(x,y,r,shown.animal||'cat',{moving,phase});ctx.restore();item.r=r;}
   const labelList=[...drawList].sort((a,b)=>Number(b.pl.id===myPlayerId)-Number(a.pl.id===myPlayerId)),occupied=[];for(const item of labelList){const {pl,shown,x,y,r}=item,label=pl.id===myPlayerId?'你':shown.name,fontSize=Math.max(11,tilePx*.29);ctx.save();ctx.font='700 '+fontSize+'px system-ui';ctx.textAlign='center';ctx.textBaseline='bottom';const w=Math.ceil(ctx.measureText(label).width)+12,h=Math.ceil(fontSize)+7;let by=y-r-7,tries=0,rect;do{rect={left:x-w/2,right:x+w/2,top:by-h,bottom:by+2};if(!occupied.some(o=>rect.left<o.right&&rect.right>o.left&&rect.top<o.bottom&&rect.bottom>o.top))break;by-=h+3;tries++;}while(tries<4);occupied.push(rect);ctx.globalAlpha=pl.alive?1:.62;ctx.fillStyle=pl.id===myPlayerId?'rgba(2,132,199,.86)':'rgba(15,23,42,.74)';ctx.fillRect(rect.left,rect.top,w,h-2);ctx.fillStyle='#fff';ctx.shadowBlur=0;ctx.fillText(label,x,by-2);ctx.restore();}
 }
 function currentObjective(){if(gameState.phase!=='playing'||meetingUiActive()||selfState.inVent)return null;if(!isImpostorRole(selfState.role)){const repair=nearestSabotageStation();if(repair)return{...repair,label:'修复 · '+repair.label,danger:true};}if(isCrewRole(selfState.role)&&selfState.alive){let best=null,bestD=Infinity;for(const id of selfState.tasks){if(selfState.completed.includes(id))continue;const o=objById(id);if(!o)continue;const d=dist(myPos,o);if(d<bestD){best=o;bestD=d;}}if(best)return{...best,label:'任务 · '+best.label,danger:false};}return null;}
