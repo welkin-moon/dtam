@@ -1,4 +1,4 @@
-import { GameRoom } from './worker.js?v=20260922-chathistory1';
+import { GameRoom } from './worker.js?v=20260922-spritesix1';
 import { getNetworkConfig, serverTargetFor, describeNetworkMode } from './net-config.js?v=20260824-direct-m3e1';
 import './native-transport-upgrade.js?v=20260829-native1';
 
