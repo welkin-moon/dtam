@@ -529,32 +529,49 @@ function drawMap(view,p){
   for(const v of VENT_DEFS){if(Math.abs(v.x-cameraX)>half+1||Math.abs(v.y-cameraY)>half+1)continue;const x=left+(v.x-worldLeft)*tilePx,y=top+(v.y-worldTop)*tilePx;ctx.fillStyle=p.wallEdge;ctx.strokeStyle=p.muted;ctx.lineWidth=1.5;ctx.beginPath();ctx.ellipse(x,y,tilePx*.28,tilePx*.16,0,0,Math.PI*2);ctx.fill();ctx.stroke();}
   for(const b of bodies){if(Math.abs(b.x-cameraX)>half+1||Math.abs(b.y-cameraY)>half+1)continue;if(selfState.alive&&!hasNetworkLineOfSight(myPos,b))continue;const x=left+(b.x-worldLeft)*tilePx,y=top+(b.y-worldTop)*tilePx;ctx.save();ctx.translate(x,y);ctx.fillStyle=b.color||p.body;ctx.beginPath();ctx.arc(-tilePx*.12,0,tilePx*.18,0,Math.PI*2);ctx.arc(tilePx*.12,0,tilePx*.18,0,Math.PI*2);ctx.fill();ctx.strokeStyle=p.danger;ctx.lineWidth=Math.max(2,tilePx*.05);ctx.beginPath();ctx.moveTo(0,-tilePx*.18);ctx.lineTo(0,tilePx*.18);ctx.stroke();ctx.restore();}
   ctx.restore();
-}const ANIMAL_SPRITE_SHEET=new Image();
-ANIMAL_SPRITE_SHEET.decoding='async';
-ANIMAL_SPRITE_SHEET.src='/assets/animals/front-pixel-v1.png';
-const ANIMAL_SPRITE_ROWS={fox:0,cat:1,goat:2,chicken:3,rabbit:4,raccoon:5};
-const ANIMAL_SHEET_COLS=5,ANIMAL_SHEET_ROWS=6,ANIMAL_SHEET_W=362,ANIMAL_SHEET_H=272;
-function drawPixelAnimalSprite(x,y,r,animal,{moving=false,phase=0}={}){
-  const row=ANIMAL_SPRITE_ROWS[animal]??ANIMAL_SPRITE_ROWS.cat;
-  const frame=moving?1+(Math.floor(phase*1.35)%4+4)%4:0;
-  const sw=ANIMAL_SHEET_W/ANIMAL_SHEET_COLS,sh=ANIMAL_SHEET_H/ANIMAL_SHEET_ROWS;
-  const sx=frame*sw,sy=row*sh;
-  const dw=r*2.75,dh=r*2.06;
-  ctx.save();
-  ctx.imageSmoothingEnabled=false;
-  if(ANIMAL_SPRITE_SHEET.complete&&ANIMAL_SPRITE_SHEET.naturalWidth){
-    ctx.drawImage(ANIMAL_SPRITE_SHEET,sx,sy,sw,sh,x-dw/2,y-dh*.62,dw,dh);
+}const PIXEL_ANIMAL_KIND={fox:'fox',cat:'blackcat',goat:'graycat',chicken:'calico',rabbit:'rabbit',raccoon:'redpanda'};
+function drawFrontPixelAnimal(x,y,r,animal,{moving=false,phase=0}={}){
+  const kind=PIXEL_ANIMAL_KIND[animal]||'blackcat',frame=moving?(1+(Math.floor(phase*1.35)%4+4)%4):0;
+  const step=[0,-1,0,1,0][frame]||0,bob=moving?Math.abs(step):0;
+  const palettes={
+    fox:{fur:'#ffe9d7',shade:'#f7b6b4',dark:'#3b2238',eye:'#7a243b',accent:'#d84b68',metal:'#f4b84d'},
+    blackcat:{fur:'#30303d',shade:'#454353',dark:'#171722',eye:'#f3b44f',accent:'#b93c55',metal:'#e9ad3f'},
+    graycat:{fur:'#8b8b9b',shade:'#b9b8c4',dark:'#30303d',eye:'#69a7df',accent:'#4979c5',metal:'#f4d36c'},
+    calico:{fur:'#fff0dc',shade:'#dc8a4d',dark:'#4a3541',eye:'#7d5132',accent:'#c54a4a',metal:'#e9ad3f'},
+    rabbit:{fur:'#fff1dc',shade:'#f49ca4',dark:'#3b3040',eye:'#34324a',accent:'#5d9a63',metal:'#f0cc5c'},
+    redpanda:{fur:'#b95d42',shade:'#e58d63',dark:'#4a2a2d',eye:'#24212a',accent:'#5e8f4b',metal:'#d9bf58'}
+  },p=palettes[kind],scale=Math.max(1,Math.floor((r*2.2)/24)),ox=Math.round(x-12*scale),oy=Math.round(y-18*scale-bob*scale);
+  const px=(gx,gy,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(ox+gx*scale,oy+gy*scale,w*scale,h*scale);};
+  ctx.save();ctx.imageSmoothingEnabled=false;
+  px(5,20+step,5,2,'rgba(15,23,42,.28)');px(14,20-step,5,2,'rgba(15,23,42,.28)');
+  if(kind==='fox'||kind==='blackcat'||kind==='graycat'||kind==='calico'){
+    px(5,2,5,6,p.dark);px(14,2,5,6,p.dark);px(6,3,3,4,p.shade);px(15,3,3,4,p.shade);
+  }else if(kind==='rabbit'){
+    px(6,0,4,8,p.fur);px(14,0,4,8,p.fur);px(7,1,2,5,p.shade);px(15,1,2,5,p.shade);
   }else{
-    ctx.fillStyle='#f8fafc';ctx.strokeStyle='#111827';ctx.lineWidth=Math.max(1,r*.08);
-    ctx.fillRect(x-r*.42,y-r*.55,r*.84,r*.84);ctx.strokeRect(x-r*.42,y-r*.55,r*.84,r*.84);
+    px(5,3,4,4,p.dark);px(15,3,4,4,p.dark);px(6,4,2,2,p.fur);px(16,4,2,2,p.fur);
   }
+  if(kind==='fox'){px(3,10,4,8,p.shade);px(1,13,4,5,p.shade);px(2,14,2,3,p.fur);}
+  if(kind==='blackcat'||kind==='graycat'||kind==='calico'){px(18,12,3,7,p.dark);px(20,10,2,5,p.dark);}
+  if(kind==='redpanda'){px(2,14,5,6,p.dark);px(0,16,4,4,p.fur);px(1,17,3,1,p.shade);}
+  px(6,6,12,11,p.fur);px(5,9,14,7,p.fur);px(7,15,10,6,p.fur);
+  if(kind==='graycat'){px(6,7,4,6,p.shade);px(14,7,4,6,p.shade);px(10,6,4,5,'#f4f0e8');px(9,12,6,5,'#f4f0e8');}
+  if(kind==='calico'){px(6,6,4,6,p.shade);px(14,6,4,5,p.dark);px(12,10,4,4,p.shade);}
+  if(kind==='redpanda'){px(6,7,3,7,'#f7dfc0');px(15,7,3,7,'#f7dfc0');px(8,9,8,6,'#f7dfc0');px(6,8,4,3,p.dark);px(14,8,4,3,p.dark);}
+  px(8,10,2,2,p.eye);px(14,10,2,2,p.eye);px(9,13,1,1,p.dark);px(13,13,1,1,p.dark);px(11,13,2,1,p.dark);
+  if(frame===2){px(9,10,2,1,p.fur);px(14,10,2,1,p.fur);}
+  if(kind==='fox'){px(11,6,2,2,p.accent);px(10,7,4,1,p.accent);}
+  px(8,16,8,2,p.accent);px(11,17,2,2,p.metal);
+  const l=frame===1||frame===4?1:0,rr=frame===2||frame===3?1:0;
+  px(7,19+l,4,4,p.fur);px(13,19+rr,4,4,p.fur);px(7,22+l,4,1,p.dark);px(13,22+rr,4,1,p.dark);
+  if(kind==='rabbit')px(4,15,3,4,'#f7f0e5');
   ctx.restore();
 }
 function drawPlayers(view,p){
   const {left,top,tilePx,cameraX,cameraY}=view,now=Date.now(),lights=gameState.sabotage?.type==='lights'&&isCrewRole(selfState.role)&&selfState.alive,vision=3.1,drawList=[];
   for(const id in players){const pl=players[id];if(!pl.connected)continue;if(pl.inVent&&pl.id!==myPlayerId)continue;if(!pl.alive&&selfState.alive&&pl.id!==myPlayerId)continue;if(pl.hiddenUntil>now&&pl.id!==myPlayerId)continue;const visual=remoteVisuals[pl.id],px=pl.id===myPlayerId?myPos.x:(visual?visual.x:pl.pos.x),py=pl.id===myPlayerId?myPos.y:(visual?visual.y:pl.pos.y);if(Math.abs(px-cameraX)>VIEW_TILES/2+1||Math.abs(py-cameraY)>VIEW_TILES/2+1)continue;if(pl.id!==myPlayerId&&selfState.alive&&!canSeePlayerPosition(myPos,{x:px,y:py}))continue;if(lights&&pl.id!==myPlayerId&&Math.hypot(px-myPos.x,py-myPos.y)>vision)continue;let shown=pl;if(pl.abilityUntil>now&&pl.disguiseTargetId&&players[pl.disguiseTargetId])shown=players[pl.disguiseTargetId];drawList.push({pl,shown,x:left+(px-(cameraX-VIEW_TILES/2))*tilePx,y:top+(py-(cameraY-VIEW_TILES/2))*tilePx});}
   drawList.sort((a,b)=>Number(a.pl.id===myPlayerId)-Number(b.pl.id===myPlayerId));
-  for(const item of drawList){const {pl,shown,x,y}=item,r=PLAYER_VISUAL_RADIUS*tilePx,v=remoteVisuals[pl.id],selfMove=pl.id===myPlayerId&&(joyActive||keys.ArrowUp||keys.ArrowDown||keys.ArrowLeft||keys.ArrowRight||keys.w||keys.W||keys.a||keys.A||keys.s||keys.S||keys.d||keys.D),speed=pl.id===myPlayerId?(selfMove?1:0):Math.hypot(Number(v?.vx||0),Number(v?.vy||0)),moving=speed>.08,seed=[...String(pl.id)].reduce((n,c)=>n+c.charCodeAt(0),0)%31,phase=performance.now()*.010+seed;ctx.save();if(!pl.alive)ctx.globalAlpha=.38;drawPixelAnimalSprite(x,y,r,shown.animal||'cat',{moving,phase});ctx.restore();item.r=r;}
+  for(const item of drawList){const {pl,shown,x,y}=item,r=PLAYER_VISUAL_RADIUS*tilePx,v=remoteVisuals[pl.id],selfMove=pl.id===myPlayerId&&(joyActive||keys.ArrowUp||keys.ArrowDown||keys.ArrowLeft||keys.ArrowRight||keys.w||keys.W||keys.a||keys.A||keys.s||keys.S||keys.d||keys.D),speed=pl.id===myPlayerId?(selfMove?1:0):Math.hypot(Number(v?.vx||0),Number(v?.vy||0)),moving=speed>.08,seed=[...String(pl.id)].reduce((n,c)=>n+c.charCodeAt(0),0)%31,phase=performance.now()*.010+seed;ctx.save();if(!pl.alive)ctx.globalAlpha=.38;drawFrontPixelAnimal(x,y,r,shown.animal||'cat',{moving,phase});ctx.restore();item.r=r;}
   const labelList=[...drawList].sort((a,b)=>Number(b.pl.id===myPlayerId)-Number(a.pl.id===myPlayerId)),occupied=[];for(const item of labelList){const {pl,shown,x,y,r}=item,label=pl.id===myPlayerId?'你':shown.name,fontSize=Math.max(11,tilePx*.29);ctx.save();ctx.font='700 '+fontSize+'px system-ui';ctx.textAlign='center';ctx.textBaseline='bottom';const w=Math.ceil(ctx.measureText(label).width)+12,h=Math.ceil(fontSize)+7;let by=y-r-7,tries=0,rect;do{rect={left:x-w/2,right:x+w/2,top:by-h,bottom:by+2};if(!occupied.some(o=>rect.left<o.right&&rect.right>o.left&&rect.top<o.bottom&&rect.bottom>o.top))break;by-=h+3;tries++;}while(tries<4);occupied.push(rect);ctx.globalAlpha=pl.alive?1:.62;ctx.fillStyle=pl.id===myPlayerId?'rgba(2,132,199,.86)':'rgba(15,23,42,.74)';ctx.fillRect(rect.left,rect.top,w,h-2);ctx.fillStyle='#fff';ctx.shadowBlur=0;ctx.fillText(label,x,by-2);ctx.restore();}
 }
 function currentObjective(){if(gameState.phase!=='playing'||meetingUiActive()||selfState.inVent)return null;if(!isImpostorRole(selfState.role)){const repair=nearestSabotageStation();if(repair)return{...repair,label:'修复 · '+repair.label,danger:true};}if(isCrewRole(selfState.role)&&selfState.alive){let best=null,bestD=Infinity;for(const id of selfState.tasks){if(selfState.completed.includes(id))continue;const o=objById(id);if(!o)continue;const d=dist(myPos,o);if(d<bestD){best=o;bestD=d;}}if(best)return{...best,label:'任务 · '+best.label,danger:false};}return null;}
