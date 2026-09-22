@@ -310,6 +310,8 @@ struct Settings {
     confirm_ejects: bool,
     #[serde(default)]
     anonymous_voting: bool,
+    #[serde(default = "default_taskbar_mode")]
+    taskbar_mode: String,
     #[serde(default = "default_music_control")]
     music_control: String,
 }
@@ -336,11 +338,15 @@ impl Default for Settings {
             sabotage_cooldown: 20,
             confirm_ejects: true,
             anonymous_voting: false,
+            taskbar_mode: default_taskbar_mode(),
             music_control: default_music_control(),
         }
     }
 }
 
+fn default_taskbar_mode() -> String {
+    "always".into()
+}
 fn default_music_control() -> String {
     "all".into()
 }
@@ -505,6 +511,8 @@ struct Room {
     meeting: Option<Meeting>,
     settings: Settings,
     #[serde(default)]
+    taskbar_done: usize,
+    #[serde(default)]
     music: MusicState,
     #[serde(default)]
     restart_vote: Option<RestartVote>,
@@ -528,6 +536,7 @@ impl Default for Room {
             reason: String::new(),
             meeting: None,
             settings: Settings::default(),
+            taskbar_done: 0,
             music: MusicState::default(),
             restart_vote: None,
             sabotage: None,
@@ -1077,6 +1086,13 @@ fn normalize_settings(raw: &Value, base: &Settings) -> Settings {
             .get("anonymousVoting")
             .and_then(Value::as_bool)
             .unwrap_or(base.anonymous_voting),
+        taskbar_mode: match raw.get("taskbarMode").and_then(Value::as_str) {
+            Some("meetings") => "meetings".into(),
+            Some("never") => "never".into(),
+            Some("always") => "always".into(),
+            _ if matches!(base.taskbar_mode.as_str(), "meetings" | "never") => base.taskbar_mode.clone(),
+            _ => "always".into(),
+        },
         music_control: match raw.get("musicControl").and_then(Value::as_str) {
             Some("host") => "host".into(),
             Some("all") => "all".into(),
@@ -1108,6 +1124,16 @@ fn task_progress(room: &Room) -> (usize, usize) {
         }
     }
     (done, total)
+}
+fn visible_task_progress(room: &Room) -> (usize, usize) {
+    let (done, total) = task_progress(room);
+    if room.settings.taskbar_mode == "always" || room.phase == "ended" {
+        return (done, total);
+    }
+    if room.settings.taskbar_mode == "meetings" {
+        return (room.taskbar_done.min(total), total);
+    }
+    (0, total)
 }
 fn self_state(room: &Room, p: &Player) -> Value {
     json!({"role":p.role,"roleLabel":role_label(&p.role),"ghostRole":p.ghost_role,"alive":p.alive,"tasks":p.tasks,"completed":p.completed,"fakeTasks":p.fake_tasks,"allies":if is_impostor(&p.role){room.players.values().filter(|x|x.id!=p.id&&is_impostor(&x.role)).map(|x|Value::String(x.id.clone())).collect::<Vec<_>>()}else{vec![]},"killReadyAt":p.kill_ready_at,"abilityReadyAt":p.ability_ready_at,"abilityUntil":p.ability_until,"trackedId":p.tracked_id,"trackUntil":p.track_until,"ventReadyAt":p.vent_ready_at,"ventExitAt":p.vent_exit_at,"protectedUntil":p.protected_until,"sabotageReadyAt":if is_impostor(&p.role){room.sabotage_ready_at}else{0},"emergencyUsed":p.emergency_used,"inVent":p.in_vent,"ventId":p.vent_id})
@@ -1158,7 +1184,7 @@ fn public_chat_history(room: &Room, player: &Player) -> Vec<ChatMessage> {
         .collect()
 }
 fn public_game(room: &Room, my_id: &str) -> Value {
-    let (d, t) = task_progress(room);
+    let (d, t) = visible_task_progress(room);
     json!({"phase":room.phase,"winner":room.winner,"reason":room.reason,"taskDone":d,"taskTotal":t,"meeting":room.meeting.as_ref().map(|m|public_meeting(m,my_id)).unwrap_or(Value::Null),"settings":room.settings,"music":room.music,"restartVote":public_restart_vote(room,my_id),"sabotage":room.sabotage.as_ref().map(public_sabotage).unwrap_or(Value::Null),"doorLockUntil":room.door_lock_until})
 }
 
@@ -1472,6 +1498,7 @@ fn start_game(rt: &mut RoomRuntime, player_id: &str) {
     }
     rt.room.bodies.clear();
     rt.room.restart_vote = None;
+    rt.room.taskbar_done = 0;
     rt.room.phase = "playing".into();
     rt.room.started_at = now;
     rt.room.ended_at = 0;
@@ -1707,7 +1734,7 @@ fn finish_task(rt: &mut RoomRuntime, player_id: &str, msg: &Value) {
             p.ability_ready_at = (now_ms() + 2500).max(p.ability_ready_at - 5000);
         }
     }
-    let (done, total) = task_progress(&rt.room);
+    let (done, total) = visible_task_progress(&rt.room);
     let completed = rt
         .room
         .players
@@ -1753,7 +1780,7 @@ fn complete_legacy_task(rt: &mut RoomRuntime, player_id: &str, id: &str) {
     if let Some(p) = rt.room.players.get_mut(player_id) {
         p.completed.push(id.into());
     }
-    let (done, total) = task_progress(&rt.room);
+    let (done, total) = visible_task_progress(&rt.room);
     let completed = rt
         .room
         .players
@@ -2042,6 +2069,9 @@ fn kill_player(rt: &mut RoomRuntime, killer_id: &str, target_id: &str) {
 
 fn start_meeting(rt: &mut RoomRuntime, player_id: &str, body_id: &str, reason: &str) {
     let now = now_ms();
+    if rt.room.settings.taskbar_mode == "meetings" {
+        rt.room.taskbar_done = task_progress(&rt.room).0;
+    }
     rt.room.phase = "meeting".into();
     rt.room.sabotage = None;
     rt.room.door_lock_until = 0;
@@ -2516,6 +2546,7 @@ fn return_to_lobby(rt: &mut RoomRuntime, reason: &str) {
     }
     rt.room.phase = "lobby".into();
     rt.room.restart_vote = None;
+    rt.room.taskbar_done = 0;
     rt.room.winner.clear();
     rt.room.reason.clear();
     rt.room.started_at = 0;
