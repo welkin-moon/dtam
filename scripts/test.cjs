@@ -43,7 +43,7 @@ includes(server,'legacy_unbound','Rust fallback must migrate pre-fencing live se
 includes(hybrid,'handoff===p.clientInstanceId','Auto P2P authority must allow an explicit stale-instance handoff');
 includes(src,"code==='session_in_use'",'client must recover from a token already owned by another live instance');
 includes(hybrid,"!(same||legacy||transfer)",'Auto browser-host authority must reject a live unrelated instance while permitting reconnect handoff');
-includes(hybrid,"game.js?v=20260922-cleanvent1",'transport must load the current session-fencing gameplay bundle');
+includes(hybrid,"game.js?v=20260922-anonvote1",'transport must load the current session-fencing gameplay bundle');
 includes(src,'directReady:p.directReady===true','Server direct readiness must be represented per player');
 includes(src,'startGameBtn.disabled=count<2||waiting>0','Server matches must wait for every direct transport');
 includes(src,"const POS_SEND_INTERVAL_DIRECT = 20",'direct P2P movement must target about 50 Hz');
@@ -58,7 +58,7 @@ includes(src,"function remoteSmoothingRate()",'remote smoothing must adapt to th
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
 includes(html,'/styles.css?v=20260922-cleanvent1','current UX cache-busted stylesheet must be loaded');
-includes(html,'/hybrid-transport.js?v=20260922-cleanvent1','current transport entry must be loaded');
+includes(html,'/hybrid-transport.js?v=20260922-anonvote1','current transport entry must be loaded');
 excludes(headers,'immutable','runtime assets must never pin mixed protocol versions');
 includes(headers,'Cache-Control: no-cache, max-age=0, must-revalidate','runtime assets must revalidate');
 includes(html,'maxlength="2"','room input must be two digits');
@@ -76,7 +76,7 @@ includes(src,'function handleGameShortcut(e)','desktop gameplay shortcuts must b
 includes(src,'const PLAYER_VISUAL_RADIUS = 0.56','player sprites must have a readable visual size without changing collision radius');
 includes(src,'function drawObjectiveHint(view,p)','offscreen tasks and urgent repairs must have direction guidance');
 includes(src,"label=pl.id===myPlayerId?'你':shown.name",'the local player label must stay concise in crowded spawns');
-includes(hybrid,"game.js?v=20260922-cleanvent1",'transport must load the current gameplay/performance bundle');
+includes(hybrid,"game.js?v=20260922-anonvote1",'transport must load the current gameplay/performance bundle');
 includes(hybrid,"game-polish.js?v=20260918-archmusic1",'transport must load the current polish bundle');
 includes(playerCss,'DTAM UX FLOW 20260829','player shell must include the current lobby layout layer');
 excludes(polish,'stopImmediatePropagation()','typing, shortcuts, and IME input must not be swallowed by a capture guard');
@@ -158,6 +158,12 @@ includes(src,"if(c.type==='clean_vent')",'client must render the clean-vent inte
 includes(server,'"task_cancel" => cancel_task','Rust authority must mirror task cancellation');
 includes(server,'"gate-e" | "beacon-sw" => "align"','Rust task types must match browser authority');
 includes(server,'"sensor-ne" | "radio-e" | "gate-s" => "keypad"','Rust keypad task types must match browser authority');
+includes(worker,"anonymousVoting:typeof raw.anonymousVoting==='boolean'",'browser authority must persist anonymous voting as a real room rule');
+includes(worker,"const{votes,...safe}=result",'browser authority must strip voter identities from anonymous results');
+includes(server,'obj.remove("votes")','Rust authority must strip voter identities from anonymous results');
+includes(src,'id="ruleAnonymous"','lobby must expose anonymous voting');
+includes(src,"anonymous?' · 匿名投票':''",'meeting results must clearly indicate anonymous voting');
+includes(server,'p.active_task = None;','Rust meetings/disconnects must release task locks');
 includes(server,'"goat" | "creamcat" => "graycat"','Rust authority must migrate temporary animal ids onto real sprite rows');
 includes(worker,"if(msg.t==='restart_vote')",'authority must accept restart votes from any connected player');
 includes(worker,"votes>=needed",'restart vote must require a connected-player majority');
