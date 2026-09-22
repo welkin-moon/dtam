@@ -10,6 +10,7 @@
     out.textContent=JSON.stringify(result);document.documentElement.dataset.dtamTwoPeerProbe='done';
   };
   (async()=>{
+    for(let i=0;i<50;i++){if(typeof el('createRoomBtn')?.onclick==='function'&&typeof el('joinRoomBtn')?.onclick==='function')break;await wait(200);}
     const input=el('playerNameInput');
     if(input){input.value='HostProbe';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));}
     el('createRoomBtn')?.click();
