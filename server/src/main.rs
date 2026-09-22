@@ -3609,6 +3609,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
             p.last_seen = now_ms();
             p.connection_id.clear();
             p.voice_enabled = false;
+            p.active_task = None;
         }
         if rt.clients.get(&player_id).map(|c| c.connection_id.as_str())
             == Some(connection_id.as_str())
