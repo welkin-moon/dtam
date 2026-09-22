@@ -1707,6 +1707,43 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 
 #gameToast.show { opacity: 1; }
+
+#eventFeedback {
+  --event-color: var(--accent);
+  position: fixed;
+  inset: 0;
+  z-index: 94;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    inset 0 0 0 4px color-mix(in srgb, var(--event-color) 72%, transparent),
+    inset 0 0 72px color-mix(in srgb, var(--event-color) 20%, transparent);
+  transition: opacity 160ms ease;
+}
+#eventFeedback.show { opacity: 1; }
+#eventFeedback[data-kind="success"] { --event-color: var(--success); }
+#eventFeedback[data-kind="danger"], #eventFeedback[data-kind="alert"] { --event-color: var(--danger); }
+#eventFeedback[data-kind="meeting"] { --event-color: var(--accent); }
+#eventFeedback[data-kind="shield"] { --event-color: #6366f1; }
+#eventFeedbackLabel {
+  position: absolute;
+  top: max(72px, calc(env(safe-area-inset-top) + 58px));
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 96px;
+  max-width: min(82vw, 360px);
+  padding: 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--event-color) 72%, transparent);
+  border-radius: var(--shape-full);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  color: var(--event-color);
+  box-shadow: var(--shadow-md);
+  font-size: 13px;
+  font-weight: 850;
+  text-align: center;
+  white-space: nowrap;
+}
+
 #leaveNotice { top: 76px; opacity: 0; transition: opacity var(--motion-dur-short) var(--motion-ease-standard); }
 #rotateOverlay {
   position: absolute;
