@@ -306,6 +306,8 @@ struct Settings {
     discussion: i64,
     voting: i64,
     emergency_meetings: i64,
+    #[serde(default = "default_emergency_cooldown")]
+    emergency_cooldown: i64,
     sabotage_cooldown: i64,
     confirm_ejects: bool,
     #[serde(default)]
@@ -335,6 +337,7 @@ impl Default for Settings {
             discussion: 15,
             voting: 45,
             emergency_meetings: 1,
+            emergency_cooldown: default_emergency_cooldown(),
             sabotage_cooldown: 20,
             confirm_ejects: true,
             anonymous_voting: false,
@@ -344,6 +347,9 @@ impl Default for Settings {
     }
 }
 
+fn default_emergency_cooldown() -> i64 {
+    15
+}
 fn default_taskbar_mode() -> String {
     "always".into()
 }
@@ -517,6 +523,8 @@ struct Room {
     #[serde(default)]
     restart_vote: Option<RestartVote>,
     sabotage: Option<Sabotage>,
+    #[serde(default)]
+    emergency_ready_at: i64,
     sabotage_ready_at: i64,
     door_lock_until: i64,
 }
@@ -540,6 +548,7 @@ impl Default for Room {
             music: MusicState::default(),
             restart_vote: None,
             sabotage: None,
+            emergency_ready_at: 0,
             sabotage_ready_at: 0,
             door_lock_until: 0,
         }
@@ -1073,6 +1082,11 @@ fn normalize_settings(raw: &Value, base: &Settings) -> Settings {
             0,
             5,
         ),
+        emergency_cooldown: clamp_i(
+            val_i(raw, "emergencyCooldown", base.emergency_cooldown),
+            0,
+            60,
+        ),
         sabotage_cooldown: clamp_i(
             val_i(raw, "sabotageCooldown", base.sabotage_cooldown),
             10,
@@ -1185,7 +1199,7 @@ fn public_chat_history(room: &Room, player: &Player) -> Vec<ChatMessage> {
 }
 fn public_game(room: &Room, my_id: &str) -> Value {
     let (d, t) = visible_task_progress(room);
-    json!({"phase":room.phase,"winner":room.winner,"reason":room.reason,"taskDone":d,"taskTotal":t,"meeting":room.meeting.as_ref().map(|m|public_meeting(m,my_id)).unwrap_or(Value::Null),"settings":room.settings,"music":room.music,"restartVote":public_restart_vote(room,my_id),"sabotage":room.sabotage.as_ref().map(public_sabotage).unwrap_or(Value::Null),"doorLockUntil":room.door_lock_until})
+    json!({"phase":room.phase,"winner":room.winner,"reason":room.reason,"taskDone":d,"taskTotal":t,"meeting":room.meeting.as_ref().map(|m|public_meeting(m,my_id)).unwrap_or(Value::Null),"settings":room.settings,"music":room.music,"restartVote":public_restart_vote(room,my_id),"sabotage":room.sabotage.as_ref().map(public_sabotage).unwrap_or(Value::Null),"emergencyReadyAt":room.emergency_ready_at,"doorLockUntil":room.door_lock_until})
 }
 
 fn elect_host(room: &mut Room) {
@@ -1499,6 +1513,7 @@ fn start_game(rt: &mut RoomRuntime, player_id: &str) {
     rt.room.bodies.clear();
     rt.room.restart_vote = None;
     rt.room.taskbar_done = 0;
+    rt.room.emergency_ready_at = now + rt.room.settings.emergency_cooldown * 1000;
     rt.room.phase = "playing".into();
     rt.room.started_at = now;
     rt.room.ended_at = 0;
@@ -2148,11 +2163,18 @@ fn call_emergency(rt: &mut RoomRuntime, player_id: &str) {
     let Some(p) = rt.room.players.get(player_id).cloned() else {
         return;
     };
-    if rt.room.phase != "playing"
-        || !p.alive
-        || p.in_vent
-        || p.emergency_used >= rt.room.settings.emergency_meetings
-    {
+    let now = now_ms();
+    if rt.room.phase != "playing" || !p.alive || p.in_vent {
+        return;
+    }
+    if now < rt.room.emergency_ready_at {
+        rt.send_to(
+            player_id,
+            json!({"t":"error","code":"meeting_cooldown","message":format!("紧急会议冷却中 · {}s",((rt.room.emergency_ready_at-now)+999)/1000)}),
+        );
+        return;
+    }
+    if p.emergency_used >= rt.room.settings.emergency_meetings {
         return;
     }
     if rt.room.sabotage.is_some() {
@@ -2319,6 +2341,7 @@ fn resume_after_meeting(rt: &mut RoomRuntime) {
     rt.room.phase = "playing".into();
     rt.room.meeting = None;
     rt.room.bodies.clear();
+    rt.room.emergency_ready_at = now + rt.room.settings.emergency_cooldown * 1000;
     let ids: Vec<String> = rt.room.players.keys().cloned().collect();
     for (i, id) in ids.iter().enumerate() {
         if let Some(p) = rt.room.players.get_mut(id) {
@@ -2547,6 +2570,7 @@ fn return_to_lobby(rt: &mut RoomRuntime, reason: &str) {
     rt.room.phase = "lobby".into();
     rt.room.restart_vote = None;
     rt.room.taskbar_done = 0;
+    rt.room.emergency_ready_at = 0;
     rt.room.winner.clear();
     rt.room.reason.clear();
     rt.room.started_at = 0;
