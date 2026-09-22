@@ -796,18 +796,49 @@ fn object(id: &str) -> Option<ObjectDef> {
 fn vent(id: &str) -> Option<VentDef> {
     VENT_DEFS.iter().copied().find(|v| v.id == id)
 }
+fn clean_vent_for_task(id: &str) -> Option<&'static str> {
+    match id {
+        "clean-vent-nw" => Some("vent-nw"),
+        "clean-vent-n" => Some("vent-n"),
+        "clean-vent-ne" => Some("vent-ne"),
+        "clean-vent-sw" => Some("vent-sw"),
+        "clean-vent-c" => Some("vent-c"),
+        "clean-vent-se" => Some("vent-se"),
+        _ => None,
+    }
+}
+fn task_target(id: &str) -> Option<(f64, f64, &'static str)> {
+    if let Some(o) = object(id) {
+        return Some((o.x, o.y, o.label));
+    }
+    let vent_id = clean_vent_for_task(id)?;
+    let v = vent(vent_id)?;
+    Some((v.x, v.y, "清理通风口"))
+}
 fn task_ids() -> Vec<String> {
-    OBJECT_DEFS
+    let mut ids: Vec<String> = OBJECT_DEFS
         .iter()
         .filter(|o| o.id != EMERGENCY_STATION)
         .map(|o| o.id.to_string())
-        .collect()
+        .collect();
+    ids.extend([
+        "clean-vent-nw",
+        "clean-vent-n",
+        "clean-vent-ne",
+        "clean-vent-sw",
+        "clean-vent-c",
+        "clean-vent-se",
+    ].into_iter().map(str::to_string));
+    ids
 }
 fn task_type(id: &str) -> &'static str {
+    if clean_vent_for_task(id).is_some() {
+        return "clean_vent";
+    }
     match id {
-        "power-nw" | "relay-n" | "relay-se" => "sequence",
-        "sensor-ne" | "radio-e" => "keypad",
-        "gate-e" | "gate-s" => "align",
+        "relay-n" | "console-c2" | "relay-se" => "sequence",
+        "sensor-ne" | "radio-e" | "gate-s" => "keypad",
+        "gate-e" | "beacon-sw" => "align",
         _ => "hold",
     }
 }
@@ -1300,6 +1331,15 @@ fn create_task_challenge(id: &str) -> ActiveTask {
                 started_at: now,
             }
         }
+        "clean_vent" => ActiveTask {
+            id: id.into(),
+            token,
+            task_type: typ.into(),
+            answer: "clean".into(),
+            min_complete_at: now + 900,
+            payload: json!({"count":6,"ventId":clean_vent_for_task(id).unwrap_or("")}),
+            started_at: now,
+        },
         _ => ActiveTask {
             id: id.into(),
             token,
@@ -1492,8 +1532,48 @@ fn start_game(rt: &mut RoomRuntime, player_id: &str) {
     rt.mark_dirty();
 }
 
+fn vent_is_cleaning(room: &Room, vent_id: &str, except_id: &str) -> bool {
+    room.players.values().any(|p| {
+        p.id != except_id
+            && p.active_task
+                .as_ref()
+                .and_then(|t| clean_vent_for_task(&t.id))
+                == Some(vent_id)
+    })
+}
+fn eject_vent_for_cleaning(rt: &mut RoomRuntime, vent_id: &str) {
+    let Some(v) = vent(vent_id) else {
+        return;
+    };
+    let now = now_ms();
+    let ids: Vec<String> = rt
+        .room
+        .players
+        .values()
+        .filter(|p| p.in_vent && p.vent_id == vent_id)
+        .map(|p| p.id.clone())
+        .collect();
+    for id in ids {
+        if let Some(p) = rt.room.players.get_mut(&id) {
+            let engineer = p.role == "engineer";
+            p.in_vent = false;
+            p.vent_id.clear();
+            p.pos = Pos { x: v.x, y: v.y };
+            p.move_seq = p.move_seq.saturating_add(1);
+            p.last_move_at = now;
+            if engineer {
+                p.vent_exit_at = 0;
+                p.vent_ready_at = now + ENGINEER_VENT_COOLDOWN_MS;
+            }
+        }
+        if let Some(p) = rt.room.players.get(&id) {
+            rt.send_to(&id,json!({"t":"vent_state","id":p.id,"x":p.pos.x,"y":p.pos.y,"moveSeq":p.move_seq,"inVent":false,"ventId":"","ventReadyAt":p.vent_ready_at,"ventExitAt":p.vent_exit_at,"ejectedByClean":true}));
+            rt.broadcast(json!({"t":"vent_state","id":p.id,"x":p.pos.x,"y":p.pos.y,"moveSeq":p.move_seq,"inVent":false,"ejectedByClean":true}),Some(&id));
+        }
+    }
+}
 fn begin_task(rt: &mut RoomRuntime, player_id: &str, id: &str) {
-    let Some(def) = object(id) else {
+    let Some((target_x, target_y, label)) = task_target(id) else {
         return;
     };
     let ok = rt
@@ -1506,17 +1586,26 @@ fn begin_task(rt: &mut RoomRuntime, player_id: &str, id: &str) {
                 && p.tasks.iter().any(|x| x == id)
                 && !p.completed.iter().any(|x| x == id)
                 && !p.in_vent
-                && ((p.pos.x - def.x).powi(2) + (p.pos.y - def.y).powi(2)).sqrt() <= 1.65
+                && ((p.pos.x - target_x).powi(2) + (p.pos.y - target_y).powi(2)).sqrt() <= 1.65
         })
         .unwrap_or(false);
     if !ok {
         return;
     }
+    if let Some(vent_id) = clean_vent_for_task(id) {
+        if vent_is_cleaning(&rt.room, vent_id, player_id) {
+            rt.send_to(player_id,json!({"t":"task_fail","message":"这个通风口正在被清理","close":true}));
+            return;
+        }
+    }
     let c = create_task_challenge(id);
     if let Some(p) = rt.room.players.get_mut(player_id) {
         p.active_task = Some(c.clone());
     }
-    rt.send_to(player_id,json!({"t":"task_challenge","id":id,"token":c.token,"type":c.task_type,"payload":c.payload,"label":def.label}));
+    if let Some(vent_id) = clean_vent_for_task(id) {
+        eject_vent_for_cleaning(rt, vent_id);
+    }
+    rt.send_to(player_id,json!({"t":"task_challenge","id":id,"token":c.token,"type":c.task_type,"payload":c.payload,"label":label}));
     rt.mark_dirty();
 }
 fn finish_task(rt: &mut RoomRuntime, player_id: &str, msg: &Value) {
@@ -1549,14 +1638,14 @@ fn finish_task(rt: &mut RoomRuntime, player_id: &str, msg: &Value) {
         );
         return;
     }
-    let Some(def) = object(id) else {
+    let Some((target_x, target_y, _)) = task_target(id) else {
         return;
     };
     let near = rt
         .room
         .players
         .get(player_id)
-        .map(|p| ((p.pos.x - def.x).powi(2) + (p.pos.y - def.y).powi(2)).sqrt() <= 1.75)
+        .map(|p| ((p.pos.x - target_x).powi(2) + (p.pos.y - target_y).powi(2)).sqrt() <= 1.75)
         .unwrap_or(false);
     if !near {
         return;
@@ -1579,6 +1668,7 @@ fn finish_task(rt: &mut RoomRuntime, player_id: &str, msg: &Value) {
             .zip(c.answer.parse::<f64>().ok())
             .map(|(a, b)| (a - b).abs() <= 4.0)
             .unwrap_or(false),
+        "clean_vent" => ans == "clean",
         _ => ans == c.answer,
     };
     if !ok {
@@ -1660,6 +1750,24 @@ fn complete_legacy_task(rt: &mut RoomRuntime, player_id: &str, id: &str) {
     );
     rt.mark_dirty();
     check_win(rt, "tasks");
+}
+
+fn cancel_task(rt: &mut RoomRuntime, player_id: &str, msg: &Value) {
+    let id = msg.get("id").and_then(Value::as_str).unwrap_or("");
+    let token = msg.get("token").and_then(Value::as_str).unwrap_or("");
+    let can_cancel = rt
+        .room
+        .players
+        .get(player_id)
+        .and_then(|p| p.active_task.as_ref())
+        .map(|c| (id.is_empty() || c.id == id) && (token.is_empty() || c.token == token))
+        .unwrap_or(false);
+    if can_cancel {
+        if let Some(p) = rt.room.players.get_mut(player_id) {
+            p.active_task = None;
+        }
+        rt.mark_dirty();
+    }
 }
 
 fn use_ability(rt: &mut RoomRuntime, player_id: &str, target_id: &str) {
@@ -2311,6 +2419,10 @@ fn handle_vent(rt: &mut RoomRuntime, player_id: &str, action: &str, vent_id: &st
             if ((p0.pos.x - v.x).powi(2) + (p0.pos.y - v.y).powi(2)).sqrt() > 1.15 {
                 return;
             }
+            if vent_is_cleaning(&rt.room, v.id, "") {
+                rt.send_to(player_id,json!({"t":"error","code":"vent_cleaning","message":"这个通风口正在清理，暂时不能进入"}));
+                return;
+            }
             if let Some(p) = rt.room.players.get_mut(player_id) {
                 p.in_vent = true;
                 p.vent_id = v.id.into();
@@ -2333,6 +2445,10 @@ fn handle_vent(rt: &mut RoomRuntime, player_id: &str, action: &str, vent_id: &st
                 return;
             };
             if !from.links.contains(&to.id) {
+                return;
+            }
+            if vent_is_cleaning(&rt.room, to.id, "") {
+                rt.send_to(player_id,json!({"t":"error","code":"vent_cleaning","message":"目标通风口正在清理"}));
                 return;
             }
             if let Some(p) = rt.room.players.get_mut(player_id) {
@@ -2758,6 +2874,7 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
             player_id,
             msg.get("id").and_then(Value::as_str).unwrap_or(""),
         ),
+        "task_cancel" => cancel_task(rt, player_id, &msg),
         "task_complete" => finish_task(rt, player_id, &msg),
         "task" => complete_legacy_task(
             rt,
