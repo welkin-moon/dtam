@@ -308,6 +308,8 @@ struct Settings {
     emergency_meetings: i64,
     sabotage_cooldown: i64,
     confirm_ejects: bool,
+    #[serde(default)]
+    anonymous_voting: bool,
     #[serde(default = "default_music_control")]
     music_control: String,
 }
@@ -333,6 +335,7 @@ impl Default for Settings {
             emergency_meetings: 1,
             sabotage_cooldown: 20,
             confirm_ejects: true,
+            anonymous_voting: false,
             music_control: default_music_control(),
         }
     }
@@ -460,6 +463,8 @@ struct Meeting {
     voting_ends_at: i64,
     votes: HashMap<String, String>,
     eligible_voters: usize,
+    #[serde(default)]
+    anonymous_voting: bool,
     result: Option<Value>,
     resume_at: i64,
 }
@@ -1068,6 +1073,10 @@ fn normalize_settings(raw: &Value, base: &Settings) -> Settings {
             .get("confirmEjects")
             .and_then(Value::as_bool)
             .unwrap_or(base.confirm_ejects),
+        anonymous_voting: raw
+            .get("anonymousVoting")
+            .and_then(Value::as_bool)
+            .unwrap_or(base.anonymous_voting),
         music_control: match raw.get("musicControl").and_then(Value::as_str) {
             Some("host") => "host".into(),
             Some("all") => "all".into(),
@@ -1104,7 +1113,18 @@ fn self_state(room: &Room, p: &Player) -> Value {
     json!({"role":p.role,"roleLabel":role_label(&p.role),"ghostRole":p.ghost_role,"alive":p.alive,"tasks":p.tasks,"completed":p.completed,"fakeTasks":p.fake_tasks,"allies":if is_impostor(&p.role){room.players.values().filter(|x|x.id!=p.id&&is_impostor(&x.role)).map(|x|Value::String(x.id.clone())).collect::<Vec<_>>()}else{vec![]},"killReadyAt":p.kill_ready_at,"abilityReadyAt":p.ability_ready_at,"abilityUntil":p.ability_until,"trackedId":p.tracked_id,"trackUntil":p.track_until,"ventReadyAt":p.vent_ready_at,"ventExitAt":p.vent_exit_at,"protectedUntil":p.protected_until,"sabotageReadyAt":if is_impostor(&p.role){room.sabotage_ready_at}else{0},"emergencyUsed":p.emergency_used,"inVent":p.in_vent,"ventId":p.vent_id})
 }
 fn public_meeting(m: &Meeting, my_id: &str) -> Value {
-    json!({"id":m.id,"stage":m.stage,"reasonText":m.reason_text,"callerId":m.caller_id,"bodyId":m.body_id,"discussionEndsAt":m.discussion_ends_at,"votingEndsAt":m.voting_ends_at,"resumeAt":m.resume_at,"myVote":m.votes.get(my_id).cloned().unwrap_or_default(),"votesCast":m.votes.len(),"eligibleVoters":m.eligible_voters,"result":if m.stage=="result"{m.result.clone().unwrap_or(Value::Null)}else{Value::Null}})
+    let mut result = if m.stage == "result" {
+        m.result.clone().unwrap_or(Value::Null)
+    } else {
+        Value::Null
+    };
+    if m.anonymous_voting {
+        if let Some(obj) = result.as_object_mut() {
+            obj.remove("votes");
+            obj.insert("anonymousVoting".into(), Value::Bool(true));
+        }
+    }
+    json!({"id":m.id,"stage":m.stage,"reasonText":m.reason_text,"callerId":m.caller_id,"bodyId":m.body_id,"discussionEndsAt":m.discussion_ends_at,"votingEndsAt":m.voting_ends_at,"resumeAt":m.resume_at,"myVote":m.votes.get(my_id).cloned().unwrap_or_default(),"votesCast":m.votes.len(),"eligibleVoters":m.eligible_voters,"anonymousVoting":m.anonymous_voting,"result":result})
 }
 fn public_sabotage(s: &Sabotage) -> Value {
     let d = sabotage_def(&s.kind);
@@ -2058,6 +2078,7 @@ fn start_meeting(rt: &mut RoomRuntime, player_id: &str, body_id: &str, reason: &
             .values()
             .filter(|p| p.alive && p.connected)
             .count(),
+        anonymous_voting: rt.room.settings.anonymous_voting,
         result: None,
         resume_at: 0,
     });
