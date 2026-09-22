@@ -437,6 +437,18 @@ struct Body {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ChatMessage {
+    id: String,
+    player_id: String,
+    name: String,
+    text: String,
+    at: i64,
+    dead: bool,
+    channel: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Meeting {
     id: String,
     stage: String,
@@ -477,6 +489,8 @@ struct Room {
     host_id: String,
     players: HashMap<String, Player>,
     bodies: Vec<Body>,
+    #[serde(default)]
+    chat_history: Vec<ChatMessage>,
     phase: String,
     started_at: i64,
     ended_at: i64,
@@ -500,6 +514,7 @@ impl Default for Room {
             host_id: String::new(),
             players: HashMap::new(),
             bodies: vec![],
+            chat_history: vec![],
             phase: "lobby".into(),
             started_at: 0,
             ended_at: 0,
@@ -1077,6 +1092,18 @@ fn public_restart_vote(room: &Room, my_id: &str) -> Value {
         .count();
     let needed = connected.len() / 2 + 1;
     json!({"id":v.id,"votes":votes,"needed":needed,"voted":v.votes.get(my_id).copied().unwrap_or(false),"expiresAt":v.expires_at})
+}
+fn public_chat_history(room: &Room, player: &Player) -> Vec<ChatMessage> {
+    room.chat_history
+        .iter()
+        .filter(|m| m.channel != "ghost" || !player.alive)
+        .cloned()
+        .rev()
+        .take(40)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
 }
 fn public_game(room: &Room, my_id: &str) -> Value {
     let (d, t) = task_progress(room);
@@ -2547,8 +2574,36 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
             if let Some(x) = rt.room.players.get_mut(player_id) {
                 x.last_chat_at = now;
             }
-            let ghost = rt.room.phase == "playing" && !p.alive;
-            let payload = json!({"t":"chat","playerId":p.id,"name":p.name,"text":text,"at":now,"dead":ghost,"channel":if ghost{"ghost"}else if meeting{"meeting"}else{"room"}});
+            let ghost = matches!(rt.room.phase.as_str(), "playing" | "meeting") && !p.alive;
+            let channel = if ghost {
+                "ghost"
+            } else if meeting {
+                "meeting"
+            } else {
+                "room"
+            };
+            let record = ChatMessage {
+                id: Uuid::new_v4().to_string(),
+                player_id: p.id.clone(),
+                name: p.name.clone(),
+                text: text.clone(),
+                at: now,
+                dead: ghost,
+                channel: channel.into(),
+            };
+            rt.room.chat_history.push(record.clone());
+            if rt.room.chat_history.len() > 40 {
+                let drop = rt.room.chat_history.len() - 40;
+                rt.room.chat_history.drain(0..drop);
+            }
+            let payload = serde_json::to_value(&record).unwrap_or(Value::Null);
+            let payload = match payload {
+                Value::Object(mut map) => {
+                    map.insert("t".into(), Value::String("chat".into()));
+                    Value::Object(map)
+                }
+                _ => json!({"t":"chat"}),
+            };
             if ghost {
                 for q in rt.room.players.values() {
                     if !q.alive {
@@ -2558,6 +2613,7 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
             } else {
                 rt.broadcast(payload, None);
             }
+            rt.mark_dirty();
         }
         "pos" => {
             let Some(p0) = rt.room.players.get(player_id).cloned() else {
@@ -3329,7 +3385,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
             },
         );
         announce_host_change(&rt, &prev);
-        rt.send_to(&player_id,json!({"t":"welcome","room":q.room,"mapId":MAP_PROTOCOL_ID,"resumed":resumed,"self":{"id":p.id,"token":p.token,"name":p.name},"features":{"bushVision":true,"mapManifest":"/maps/east-beach-v1.json","musicSync":true,"roomIdentityV2":true,"serverPrimaryV2":true},"hostId":rt.room.host_id,"players":public_players(&rt.room),"profiles":profiles(&rt.room),"voices":voice_directory(&rt.room,Some(&p)),"bodies":rt.room.bodies,"game":public_game(&rt.room,&p.id),"selfState":self_state(&rt.room,&p)}));
+        rt.send_to(&player_id,json!({"t":"welcome","room":q.room,"mapId":MAP_PROTOCOL_ID,"resumed":resumed,"self":{"id":p.id,"token":p.token,"name":p.name},"features":{"bushVision":true,"mapManifest":"/maps/east-beach-v1.json","musicSync":true,"roomIdentityV2":true,"serverPrimaryV2":true},"hostId":rt.room.host_id,"players":public_players(&rt.room),"profiles":profiles(&rt.room),"voices":voice_directory(&rt.room,Some(&p)),"bodies":rt.room.bodies,"chatHistory":public_chat_history(&rt.room,&p),"game":public_game(&rt.room,&p.id),"selfState":self_state(&rt.room,&p)}));
         if !resumed {
             rt.broadcast(
                 json!({"t":"notice","text":format!("{} 加入了房间",p.name)}),
