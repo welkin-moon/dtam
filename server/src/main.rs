@@ -2510,7 +2510,7 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
             .get(player_id)
             .map(|p| !p.direct_ready)
             .unwrap_or(true);
-    if direct_required && !matches!(t, "leave" | "voice_state") {
+    if direct_required && !matches!(t, "leave" | "voice_state" | "restart_vote" | "reset") {
         return true;
     }
     match t {
