@@ -7,8 +7,8 @@ const RECONNECT_GRACE_MS = 180000;
 const IMPOSTOR_ROLES = new Set(['impostor','shapeshifter','phantom','viper']);
 const CREW_ROLES = new Set(['crewmate','engineer','scientist','tracker','noisemaker','detective']);
 const ROLE_LABELS = {impostor:'普通内鬼',shapeshifter:'变形者',phantom:'隐身者',viper:'毒蛇',crewmate:'普通船员',engineer:'工程师',scientist:'科学家',tracker:'追踪者',noisemaker:'噪音制造者',detective:'侦探',guardian:'守护天使'};
-const ANIMALS = ['fox','blackcat','graycat','calico','creamcat','rabbit','redpanda','shiba'];
-const LEGACY_ANIMAL_MAP = Object.freeze({chicken:'calico',cat:'blackcat',raccoon:'redpanda',goat:'graycat'});
+const ANIMALS = ['fox','blackcat','graycat','calico','rabbit','redpanda'];
+const LEGACY_ANIMAL_MAP = Object.freeze({chicken:'calico',cat:'blackcat',raccoon:'redpanda',goat:'graycat',creamcat:'graycat',shiba:'fox'});
 function normalizeAnimal(value,id=''){const v=String(value||'');if(ANIMALS.includes(v))return v;if(LEGACY_ANIMAL_MAP[v])return LEGACY_ANIMAL_MAP[v];return ANIMALS[Math.abs(String(id||'').length)%ANIMALS.length];}
 const SHAPESHIFT_DURATION_MS=12000,PHANTOM_DURATION_MS=8000,VIPER_DISSOLVE_MS=12000,ROLE_ABILITY_COOLDOWN_MS=30000,TRACK_DURATION_MS=20000,SCIENTIST_VIEW_MS=9000,DETECTIVE_COOLDOWN_MS=18000,GUARDIAN_PROTECT_MS=10000,GUARDIAN_COOLDOWN_MS=30000,ENGINEER_VENT_MAX_MS=8000,ENGINEER_VENT_COOLDOWN_MS=20000;
 const MAX_AVATAR_CHARS = 5000;
