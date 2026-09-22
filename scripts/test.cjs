@@ -58,7 +58,7 @@ includes(src,"function remoteSmoothingRate()",'remote smoothing must adapt to th
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
 includes(html,'/styles.css?v=20260829-ux1','current UX cache-busted stylesheet must be loaded');
-includes(html,'/hybrid-transport.js?v=20260920-hostattach1','current transport entry must be loaded');
+includes(html,'/hybrid-transport.js?v=20260922-guestattach1','current transport entry must be loaded');
 excludes(headers,'immutable','runtime assets must never pin mixed protocol versions');
 includes(headers,'Cache-Control: no-cache, max-age=0, must-revalidate','runtime assets must revalidate');
 includes(html,'maxlength="2"','room input must be two digits');
@@ -123,6 +123,8 @@ includes(hybrid,"tryServerPrimary()",'Auto transport must probe the independent 
 includes(hybrid,"m?.features?.serverPrimaryV2!==true",'Auto must reject an outdated live Server before adopting it as primary');
 includes(hybrid,"const attached=await attach(this.auth,this.local,this.params);this.open(attached?'browser-host':'p2p-error')",'browser host must attach authority identity before exposing WebSocket open');
 includes(hybrid,"d=>this.opened?this.deliver(d):pending.push(String(d))",'browser host must buffer welcome/state packets until the WebSocket open event');
+includes(hybrid,"this.joinSent=true;badge('P2P · 正在建立会话')",'guest must send the attach handshake before exposing WebSocket open');
+includes(hybrid,"if(!this.opened){if(m?.t!=='welcome'&&m?.t!=='error')",'guest must wait for authoritative welcome or error before WebSocket open');
 includes(server,'"serverPrimaryV2":true','current Rust authority must advertise the server-primary capability gate');
 includes(worker,'p2pFallbackV2:true','browser authority must advertise current P2P fallback capabilities');
 includes(hybrid,"room_not_found')return abandon('房间不在 Server，转 P2P')",'Server absence of a fallback-created room must fall through to P2P');
