@@ -69,6 +69,19 @@ const COLORS: [&str; 15] = [
 const ANIMALS: [&str; 8] = [
     "fox", "blackcat", "graycat", "calico", "creamcat", "rabbit", "redpanda", "shiba",
 ];
+fn normalize_animal(value: &str) -> String {
+    if ANIMALS.contains(&value) {
+        return value.into();
+    }
+    match value {
+        "chicken" => "calico",
+        "cat" => "blackcat",
+        "raccoon" => "redpanda",
+        "goat" => "graycat",
+        _ => "blackcat",
+    }
+    .into()
+}
 const SPAWNS: [(f64, f64); 15] = [
     (75.5, 75.5),
     (73.5, 75.5),
@@ -450,6 +463,14 @@ struct Sabotage {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RestartVote {
+    id: String,
+    votes: HashMap<String, bool>,
+    expires_at: i64,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Room {
     initialized: bool,
     created_at: i64,
@@ -465,6 +486,8 @@ struct Room {
     settings: Settings,
     #[serde(default)]
     music: MusicState,
+    #[serde(default)]
+    restart_vote: Option<RestartVote>,
     sabotage: Option<Sabotage>,
     sabotage_ready_at: i64,
     door_lock_until: i64,
@@ -485,6 +508,7 @@ impl Default for Room {
             meeting: None,
             settings: Settings::default(),
             music: MusicState::default(),
+            restart_vote: None,
             sabotage: None,
             sabotage_ready_at: 0,
             door_lock_until: 0,
@@ -512,9 +536,7 @@ impl Room {
             if p.role == "cloaker" {
                 p.role = "phantom".into();
             }
-            if !ANIMALS.contains(&p.animal.as_str()) {
-                p.animal = "chicken".into();
-            }
+            p.animal = normalize_animal(&p.animal);
             p.avatar = sanitize_avatar(&p.avatar);
         }
     }
@@ -1041,9 +1063,24 @@ fn public_sabotage(s: &Sabotage) -> Value {
     let d = sabotage_def(&s.kind);
     json!({"type":s.kind,"label":d.map(|x|x.label).unwrap_or(&s.kind),"startedAt":s.started_at,"endsAt":s.ends_at,"fixedStations":s.fixed_stations,"requiredStations":d.map(|x|x.stations.iter().map(|z|z.to_string()).collect::<Vec<_>>()).unwrap_or_default()})
 }
+fn public_restart_vote(room: &Room, my_id: &str) -> Value {
+    let Some(v) = &room.restart_vote else {
+        return Value::Null;
+    };
+    if v.expires_at <= now_ms() {
+        return Value::Null;
+    }
+    let connected: Vec<_> = room.players.values().filter(|p| p.connected).collect();
+    let votes = connected
+        .iter()
+        .filter(|p| v.votes.get(&p.id).copied().unwrap_or(false))
+        .count();
+    let needed = connected.len() / 2 + 1;
+    json!({"id":v.id,"votes":votes,"needed":needed,"voted":v.votes.get(my_id).copied().unwrap_or(false),"expiresAt":v.expires_at})
+}
 fn public_game(room: &Room, my_id: &str) -> Value {
     let (d, t) = task_progress(room);
-    json!({"phase":room.phase,"winner":room.winner,"reason":room.reason,"taskDone":d,"taskTotal":t,"meeting":room.meeting.as_ref().map(|m|public_meeting(m,my_id)).unwrap_or(Value::Null),"settings":room.settings,"music":room.music,"sabotage":room.sabotage.as_ref().map(public_sabotage).unwrap_or(Value::Null),"doorLockUntil":room.door_lock_until})
+    json!({"phase":room.phase,"winner":room.winner,"reason":room.reason,"taskDone":d,"taskTotal":t,"meeting":room.meeting.as_ref().map(|m|public_meeting(m,my_id)).unwrap_or(Value::Null),"settings":room.settings,"music":room.music,"restartVote":public_restart_vote(room,my_id),"sabotage":room.sabotage.as_ref().map(public_sabotage).unwrap_or(Value::Null),"doorLockUntil":room.door_lock_until})
 }
 
 fn elect_host(room: &mut Room) {
@@ -1346,6 +1383,7 @@ fn start_game(rt: &mut RoomRuntime, player_id: &str) {
         );
     }
     rt.room.bodies.clear();
+    rt.room.restart_vote = None;
     rt.room.phase = "playing".into();
     rt.room.started_at = now;
     rt.room.ended_at = 0;
@@ -2306,18 +2344,12 @@ fn handle_vent(rt: &mut RoomRuntime, player_id: &str, action: &str, vent_id: &st
     }
     rt.mark_dirty();
 }
-fn reset_lobby(rt: &mut RoomRuntime, player_id: &str) {
-    if rt.room.phase != "ended"
-        || !rt
-            .room
-            .players
-            .get(player_id)
-            .map(|p| p.connected)
-            .unwrap_or(false)
-    {
+fn return_to_lobby(rt: &mut RoomRuntime, reason: &str) {
+    if rt.room.phase == "lobby" {
         return;
     }
     rt.room.phase = "lobby".into();
+    rt.room.restart_vote = None;
     rt.room.winner.clear();
     rt.room.reason.clear();
     rt.room.started_at = 0;
@@ -2360,9 +2392,73 @@ fn reset_lobby(rt: &mut RoomRuntime, player_id: &str) {
         }
     }
     rt.broadcast(
-        json!({"t":"lobby_reset","players":public_players(&rt.room)}),
+        json!({"t":"lobby_reset","players":public_players(&rt.room),"reason":reason}),
         None,
     );
+    rt.broadcast_state();
+    rt.mark_dirty();
+}
+fn reset_lobby(rt: &mut RoomRuntime, player_id: &str) {
+    if rt.room.phase != "ended"
+        || !rt
+            .room
+            .players
+            .get(player_id)
+            .map(|p| p.connected)
+            .unwrap_or(false)
+    {
+        return;
+    }
+    return_to_lobby(rt, "本局已结束");
+}
+fn cast_restart_vote(rt: &mut RoomRuntime, player_id: &str) {
+    let connected_player = rt
+        .room
+        .players
+        .get(player_id)
+        .map(|p| p.connected)
+        .unwrap_or(false);
+    if !connected_player || !matches!(rt.room.phase.as_str(), "playing" | "meeting") {
+        return;
+    }
+    let now = now_ms();
+    if rt
+        .room
+        .restart_vote
+        .as_ref()
+        .map(|v| v.expires_at <= now)
+        .unwrap_or(true)
+    {
+        rt.room.restart_vote = Some(RestartVote {
+            id: Uuid::new_v4().to_string(),
+            votes: HashMap::new(),
+            expires_at: now + 30_000,
+        });
+    }
+    if let Some(v) = rt.room.restart_vote.as_mut() {
+        v.votes.insert(player_id.into(), true);
+    }
+    let connected: Vec<_> = rt.room.players.values().filter(|p| p.connected).collect();
+    let votes = rt
+        .room
+        .restart_vote
+        .as_ref()
+        .map(|v| {
+            connected
+                .iter()
+                .filter(|p| v.votes.get(&p.id).copied().unwrap_or(false))
+                .count()
+        })
+        .unwrap_or(0);
+    let needed = connected.len() / 2 + 1;
+    if votes >= needed {
+        rt.broadcast(
+            json!({"t":"notice","text":"重开投票通过，返回等待室"}),
+            None,
+        );
+        return_to_lobby(rt, "多数玩家同意重新开始");
+        return;
+    }
     rt.broadcast_state();
     rt.mark_dirty();
 }
@@ -2710,6 +2806,7 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
             msg.get("action").and_then(Value::as_str).unwrap_or(""),
             msg.get("ventId").and_then(Value::as_str).unwrap_or(""),
         ),
+        "restart_vote" => cast_restart_vote(rt, player_id),
         "reset" => reset_lobby(rt, player_id),
         "leave" => {
             rt.close_client(player_id, 1000, "leave");
@@ -2723,6 +2820,17 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
 
 fn tick_room(rt: &mut RoomRuntime) {
     let now = now_ms();
+    if rt
+        .room
+        .restart_vote
+        .as_ref()
+        .map(|v| v.expires_at <= now)
+        .unwrap_or(false)
+    {
+        rt.room.restart_vote = None;
+        rt.broadcast_state();
+        rt.mark_dirty();
+    }
     let changed = cleanup_expired(rt, now);
     let before = rt.room.bodies.len();
     rt.room
