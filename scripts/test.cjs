@@ -58,7 +58,7 @@ includes(src,"function remoteSmoothingRate()",'remote smoothing must adapt to th
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
 includes(html,'/styles.css?v=20260829-ux1','current UX cache-busted stylesheet must be loaded');
-includes(html,'/hybrid-transport.js?v=20260922-visioncache1','current transport entry must be loaded');
+includes(html,'/hybrid-transport.js?v=20260922-spritesix1','current transport entry must be loaded');
 excludes(headers,'immutable','runtime assets must never pin mixed protocol versions');
 includes(headers,'Cache-Control: no-cache, max-age=0, must-revalidate','runtime assets must revalidate');
 includes(html,'maxlength="2"','room input must be two digits');
@@ -147,8 +147,10 @@ assert(fs.existsSync('assets/animals/front-pixel-v1.png'),'pixel sprite sheet as
 includes(src,'ctx.drawImage(ANIMAL_PIXEL_SHEET','supported animals must render sprite-sheet frames');
 includes(src,"ctx.imageSmoothingEnabled=false",'pixel animals must render without smoothing');
 includes(src,"PIXEL_ANIMAL_KIND={fox:'fox',blackcat:'blackcat',graycat:'graycat',calico:'calico',creamcat:'creamcat'",'client must render the expanded animal roster');
-includes(worker,"const ANIMALS = ['fox','blackcat','graycat','calico','creamcat','rabbit','redpanda','shiba']",'browser authority must assign expanded animal ids');
+includes(worker,"const ANIMALS = ['fox','blackcat','graycat','calico','rabbit','redpanda']",'browser authority must only assign sprite-sheet-backed animal ids');
 includes(worker,"LEGACY_ANIMAL_MAP",'old room animal ids must migrate safely');
+includes(worker,"creamcat:'graycat',shiba:'fox'",'temporary procedural animal ids must migrate onto real sprite rows');
+includes(server,'"goat" | "creamcat" => "graycat"','Rust authority must migrate temporary animal ids onto real sprite rows');
 includes(worker,"if(msg.t==='restart_vote')",'authority must accept restart votes from any connected player');
 includes(worker,"votes>=needed",'restart vote must require a connected-player majority');
 includes(worker,"await this.returnToLobby('多数玩家同意重新开始')",'successful restart vote must return the room to the waiting room');
