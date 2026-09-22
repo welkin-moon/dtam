@@ -531,7 +531,19 @@ function drawMap(view,p){
   for(const b of bodies){if(Math.abs(b.x-cameraX)>half+1||Math.abs(b.y-cameraY)>half+1)continue;if(selfState.alive&&!hasNetworkLineOfSight(myPos,b))continue;const x=left+(b.x-worldLeft)*tilePx,y=top+(b.y-worldTop)*tilePx;ctx.save();ctx.translate(x,y);ctx.fillStyle=b.color||p.body;ctx.beginPath();ctx.arc(-tilePx*.12,0,tilePx*.18,0,Math.PI*2);ctx.arc(tilePx*.12,0,tilePx*.18,0,Math.PI*2);ctx.fill();ctx.strokeStyle=p.danger;ctx.lineWidth=Math.max(2,tilePx*.05);ctx.beginPath();ctx.moveTo(0,-tilePx*.18);ctx.lineTo(0,tilePx*.18);ctx.stroke();ctx.restore();}
   ctx.restore();
 }const PIXEL_ANIMAL_KIND={fox:'fox',blackcat:'blackcat',graycat:'graycat',calico:'calico',creamcat:'creamcat',rabbit:'rabbit',redpanda:'redpanda',shiba:'shiba',cat:'blackcat',goat:'graycat',chicken:'calico',raccoon:'redpanda'};
+const ANIMAL_PIXEL_SHEET=new Image();
+ANIMAL_PIXEL_SHEET.decoding='async';
+ANIMAL_PIXEL_SHEET.src='/assets/animals/front-pixel-v1.png';
+const ANIMAL_PIXEL_SHEET_ROWS={fox:0,blackcat:1,graycat:2,calico:3,rabbit:4,redpanda:5};
 function drawFrontPixelAnimal(x,y,r,animal,{moving=false,phase=0}={}){
+  const kind=PIXEL_ANIMAL_KIND[animal]||'blackcat',row=ANIMAL_PIXEL_SHEET_ROWS[kind];
+  if(row!==undefined&&ANIMAL_PIXEL_SHEET.complete&&ANIMAL_PIXEL_SHEET.naturalWidth){
+    const frame=moving?(1+(Math.floor(phase*1.35)%4+4)%4):0,sw=ANIMAL_PIXEL_SHEET.naturalWidth/5,sh=ANIMAL_PIXEL_SHEET.naturalHeight/6,dw=r*3.0,dh=r*2.25;
+    ctx.save();ctx.imageSmoothingEnabled=false;ctx.drawImage(ANIMAL_PIXEL_SHEET,frame*sw,row*sh,sw,sh,Math.round(x-dw/2),Math.round(y-dh*.72),Math.round(dw),Math.round(dh));ctx.restore();return;
+  }
+  drawProceduralPixelAnimal(x,y,r,animal,{moving,phase});
+}
+function drawProceduralPixelAnimal(x,y,r,animal,{moving=false,phase=0}={}){
   const kind=PIXEL_ANIMAL_KIND[animal]||'blackcat',frame=moving?(1+(Math.floor(phase*1.35)%4+4)%4):0;
   const step=[0,-1,0,1,0][frame]||0,bob=moving?Math.abs(step):0;
   const palettes={
