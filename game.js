@@ -579,8 +579,32 @@ function drawPlayers(view,p){
 }
 function currentObjective(){if(gameState.phase!=='playing'||meetingUiActive()||selfState.inVent)return null;if(!isImpostorRole(selfState.role)){const repair=nearestSabotageStation();if(repair)return{...repair,label:'修复 · '+repair.label,danger:true};}if(isCrewRole(selfState.role)&&selfState.alive){let best=null,bestD=Infinity;for(const id of selfState.tasks){if(selfState.completed.includes(id))continue;const o=objById(id);if(!o)continue;const d=dist(myPos,o);if(d<bestD){best=o;bestD=d;}}if(best)return{...best,label:'任务 · '+best.label,danger:false};}return null;}
 function drawObjectiveHint(view,p){const o=currentObjective();if(!o)return;const {left,top,side,tilePx,cameraX,cameraY}=view,dx=o.x-cameraX,dy=o.y-cameraY,half=VIEW_TILES/2-1;if(Math.abs(dx)<=half&&Math.abs(dy)<=half)return;const cx=left+side/2,cy=top+side/2,edge=side/2-34,px=dx*tilePx,py=dy*tilePx,scale=1/Math.max(Math.abs(px)/edge,Math.abs(py)/edge,0.001),x=cx+px*scale,y=cy+py*scale,angle=Math.atan2(py,px),color=o.danger?p.danger:p.task;ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(12,0);ctx.lineTo(-8,-8);ctx.lineTo(-5,0);ctx.lineTo(-8,8);ctx.closePath();ctx.fill();ctx.restore();ctx.save();ctx.font='700 11px system-ui';ctx.textBaseline='middle';const label=o.label,w=Math.min(160,ctx.measureText(label).width+14),lx=clamp(x+(Math.cos(angle)>=0?-w-16:16),left+4,left+side-w-4),ly=clamp(y,top+16,top+side-16);ctx.fillStyle='rgba(15,23,42,.78)';ctx.fillRect(lx,ly-12,w,24);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.fillText(label,lx+w/2,ly);ctx.restore();}
+function castWallVisionRay(angle,maxClientDist){
+  const ox=toNetworkCoord(myPos.x),oy=toNetworkCoord(myPos.y),dx=Math.cos(angle),dy=Math.sin(angle),maxDist=toNetworkCoord(maxClientDist),closed=doorsClosed();
+  let cx=Math.floor(ox),cy=Math.floor(oy),travel=0;
+  const stepX=dx<0?-1:1,stepY=dy<0?-1:1,deltaX=Math.abs(dx)>1e-9?Math.abs(1/dx):Infinity,deltaY=Math.abs(dy)>1e-9?Math.abs(1/dy):Infinity;
+  let sideX=Math.abs(dx)>1e-9?(dx<0?(ox-cx):((cx+1)-ox))*deltaX:Infinity;
+  let sideY=Math.abs(dy)>1e-9?(dy<0?(oy-cy):((cy+1)-oy))*deltaY:Infinity;
+  while(travel<maxDist){
+    if(sideX<sideY){travel=sideX;sideX+=deltaX;cx+=stepX;}else{travel=sideY;sideY+=deltaY;cy+=stepY;}
+    if(travel>=maxDist){travel=maxDist;break;}
+    if(isNetworkWallCell(cx,cy)||(closed&&isNetworkDoorCell(cx,cy))){travel=Math.min(maxDist,travel+.42);break;}
+  }
+  return{x:toClientCoord(ox+dx*travel),y:toClientCoord(oy+dy*travel)};
+}
+function drawWallVisionMask(view){
+  if(gameState.phase!=='playing'||!selfState.alive||meetingUiActive())return;
+  const{left,top,side,tilePx,cameraX,cameraY}=view,worldLeft=cameraX-VIEW_TILES/2,worldTop=cameraY-VIEW_TILES/2,maxDist=VIEW_TILES*.82,rays=144,path=new Path2D();
+  path.rect(left,top,side,side);
+  for(let n=0;n<rays;n++){
+    const a=-Math.PI+(n/rays)*Math.PI*2,q=castWallVisionRay(a,maxDist),sx=left+(q.x-worldLeft)*tilePx,sy=top+(q.y-worldTop)*tilePx;
+    if(n===0)path.moveTo(sx,sy);else path.lineTo(sx,sy);
+  }
+  path.closePath();
+  ctx.save();ctx.fillStyle='#05070b';ctx.fill(path,'evenodd');ctx.restore();
+}
 function drawLightsMask(view){if(gameState.sabotage?.type!=='lights'||!isCrewRole(selfState.role)||!selfState.alive)return;const{left,top,side,tilePx,cameraX,cameraY}=view,x=left+(myPos.x-(cameraX-VIEW_TILES/2))*tilePx,y=top+(myPos.y-(cameraY-VIEW_TILES/2))*tilePx,r=tilePx*3.1,path=new Path2D();path.rect(left,top,side,side);path.arc(x,y,r,0,Math.PI*2);ctx.save();ctx.fillStyle='#000';ctx.fill(path,'evenodd');ctx.restore();}
-function draw(){const W=canvas._cssWidth||innerWidth,H=canvas._cssHeight||innerHeight,side=Math.min(W,H),left=(W-side)/2,top=(H-side)/2,tilePx=side/VIEW_TILES,cameraX=clamp(myPos.x,VIEW_TILES/2,MAP_SIZE-VIEW_TILES/2),cameraY=clamp(myPos.y,VIEW_TILES/2,MAP_SIZE-VIEW_TILES/2),view={left,top,side,tilePx,cameraX,cameraY},p=getCanvasPalette();ctx.clearRect(0,0,W,H);drawMap(view,p);drawPlayers(view,p);drawBushLayer(view,true);drawLightsMask(view);drawObjectiveHint(view,p);}
+function draw(){const W=canvas._cssWidth||innerWidth,H=canvas._cssHeight||innerHeight,side=Math.min(W,H),left=(W-side)/2,top=(H-side)/2,tilePx=side/VIEW_TILES,cameraX=clamp(myPos.x,VIEW_TILES/2,MAP_SIZE-VIEW_TILES/2),cameraY=clamp(myPos.y,VIEW_TILES/2,MAP_SIZE-VIEW_TILES/2),view={left,top,side,tilePx,cameraX,cameraY},p=getCanvasPalette();ctx.clearRect(0,0,W,H);drawMap(view,p);drawPlayers(view,p);drawBushLayer(view,true);drawWallVisionMask(view);drawLightsMask(view);drawObjectiveHint(view,p);}
 function gameLoop(now=performance.now()){if(!window._gameLoopRunning)return;const dt=clamp((now-lastFrameTime)/1000,0,0.05);lastFrameTime=now;update(dt);updateRemoteVisuals(dt);draw();requestAnimationFrame(gameLoop);}
 
 function handleJoyTouch(clientX,clientY){const rect=joystick.getBoundingClientRect(),cx=rect.left+rect.width/2,cy=rect.top+rect.height/2,dx=clientX-cx,dy=clientY-cy,maxR=Math.max(1,rect.width/2-20),d=Math.hypot(dx,dy),scale=Math.min(1,d/maxR),a=Math.atan2(dy,dx),kx=Math.cos(a)*maxR*scale,ky=Math.sin(a)*maxR*scale;joystickKnob.style.transform=`translate(calc(-50% + ${kx}px), calc(-50% + ${ky}px))`;joyDX=Math.cos(a)*scale;joyDY=Math.sin(a)*scale;joyActive=d>2;}
