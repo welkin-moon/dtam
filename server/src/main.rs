@@ -859,6 +859,7 @@ fn task_type(id: &str) -> &'static str {
         return "clean_vent";
     }
     match id {
+        "power-nw" | "panel-s" => "wires",
         "relay-n" | "console-c2" | "relay-se" => "sequence",
         "sensor-ne" | "radio-e" | "gate-s" => "keypad",
         "gate-e" | "beacon-sw" => "align",
@@ -1388,6 +1389,26 @@ fn create_task_challenge(id: &str) -> ActiveTask {
                 answer: target.to_string(),
                 min_complete_at: now + 500,
                 payload: json!({"target":target}),
+                started_at: now,
+            }
+        }
+        "wires" => {
+            let mut right_order = vec![0, 1, 2, 3];
+            right_order.shuffle(&mut rng);
+            let mapping = (0..4)
+                .map(|left| {
+                    let slot = right_order.iter().position(|x| *x == left).unwrap_or(0);
+                    format!("{}:{}", left, slot)
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            ActiveTask {
+                id: id.into(),
+                token,
+                task_type: typ.into(),
+                answer: mapping,
+                min_complete_at: now + 650,
+                payload: json!({"rightOrder":right_order}),
                 started_at: now,
             }
         }
