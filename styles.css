@@ -1641,6 +1641,53 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .vent-debris.cleared { opacity: 0; transform: scale(.72); pointer-events: none; }
 #ventCleanStatus { min-height: 22px; color: var(--text); font-weight: 800; }
 
+.wire-board {
+  display: grid;
+  grid-template-columns: minmax(74px, 1fr) minmax(34px, .6fr) minmax(74px, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  margin: 16px 0 10px;
+}
+.wire-column {
+  display: grid;
+  gap: 9px;
+}
+.wire-lines {
+  border-inline: 1px dashed var(--border);
+  border-radius: var(--shape-md);
+  background: color-mix(in srgb, var(--surface-2) 78%, transparent);
+}
+.wire-terminal {
+  min-height: 48px;
+  border: 2px solid color-mix(in srgb, currentColor 54%, var(--border));
+  border-radius: var(--shape-md);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+  transition: transform 110ms ease, opacity 140ms ease, box-shadow 140ms ease;
+}
+.wire-terminal.selected {
+  transform: scale(1.04);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 26%, transparent);
+}
+.wire-terminal.connected {
+  opacity: .42;
+  transform: scale(.96);
+}
+.wire-0 { color: #dc2626; }
+.wire-1 { color: #2563eb; }
+.wire-2 { color: #16a34a; }
+.wire-3 { color: #d97706; }
+#wireStatus {
+  min-height: 22px;
+  color: var(--muted);
+  font-weight: 750;
+}
+
+
 
 #minimapOverlay {
   position: absolute;
