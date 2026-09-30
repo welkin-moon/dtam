@@ -163,17 +163,42 @@ class BrowserAuthority {
 }
 
 class HostMailbox {
-  constructor(roomCode, hostToken, authority) { this.roomCode = roomCode; this.hostToken = hostToken; this.authority = authority; this.peers = new Map(); this.pollTimer = null; this.stopped = false; }
-  start() { this.stopped = false; this.poll(); }
+  constructor(roomCode, hostToken, authority) { this.roomCode = roomCode; this.hostToken = hostToken; this.authority = authority; this.peers = new Map(); this.pollTimer = null; this.stopped = false; this.emptyStreak = 0; }
+  start() { this.stopped = false; this.emptyStreak = 0; this.poll(); }
   stop() { this.stopped = true; clearTimeout(this.pollTimer); this.pollTimer = null; }
   async setState(state) { try { await api(`/v1/rooms/${this.roomCode}/state`, { method: 'POST', body: JSON.stringify({ hostToken: this.hostToken, state }) }); } catch (_) {} }
   async poll() {
     if (this.stopped) return;
+    let nextDelay = 1500;
     try {
       const { data } = await api(`/v1/rooms/${this.roomCode}/joins?hostToken=${encodeURIComponent(this.hostToken)}`);
-      for (const p of data.peers || []) if (!this.peers.has(p.peerId)) this.acceptPeer(p.peerId).catch(e => console.warn('[P2P] accept peer', e));
-    } catch (e) { console.warn('[P2P] join poll', e); }
-    if (!this.stopped) this.pollTimer = setTimeout(() => this.poll(), JOIN_POLL_MS);
+      let newPeers = 0;
+      for (const p of data.peers || []) {
+        if (!this.peers.has(p.peerId)) {
+          newPeers++;
+          this.acceptPeer(p.peerId).catch(e => console.warn('[P2P] accept peer', e));
+        }
+      }
+      if (newPeers > 0) this.emptyStreak = 0; else this.emptyStreak++;
+      const bell = typeof window !== 'undefined' && window.__DTAM_BELL__?.connected === true && String(window.__DTAM_BELL__?.room || '') === String(this.roomCode);
+      if (bell) {
+        nextDelay = 15000 + Math.random() * 3000;
+      } else {
+        const steps = [1500, 2200, 3200, 4800, 6500, 8000];
+        const stepDelay = steps[Math.min(this.emptyStreak, steps.length - 1)];
+        const jitter = Math.random() * 600;
+        nextDelay = Math.min(8000, stepDelay + jitter);
+      }
+    } catch (e) {
+      console.warn('[P2P] join poll', e);
+      const status = Number(e?.status || 0);
+      if (status === 429 || (status >= 500 && status < 600)) {
+        nextDelay = 10000 + Math.random() * 5000;
+      } else {
+        nextDelay = 3000 + Math.random() * 1000;
+      }
+    }
+    if (!this.stopped) this.pollTimer = setTimeout(() => this.poll(), nextDelay);
   }
   async acceptPeer(peerId) {
     const pc = new NativeRTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }], bundlePolicy: 'max-bundle' });

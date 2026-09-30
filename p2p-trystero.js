@@ -214,7 +214,14 @@ class BrowserAuthority {
     this.peerSockets.set(peerId, sock);
     return sock;
   }
-  shutdown() { this.ctx.deleteAlarm(); }
+  shutdown() {
+    this.ctx.deleteAlarm();
+    for (const ws of this.ctx.getWebSockets()) {
+      ws.closed = true;
+    }
+    this.ctx.sockets.clear();
+    this.peerSockets.clear();
+  }
 }
 
 class P2PWebSocket extends EventTarget {
@@ -230,7 +237,7 @@ class P2PWebSocket extends EventTarget {
     this._create = this._params.get('create') === '1';
     this._opened = false; this._closed = false; this._native = null;
     this._trRoom = null; this._control = null; this._fast = null; this._hello = null;
-    this._hostPeerId = ''; this._authority = null; this._authoritySocket = null;
+    this._hostPeerId = ''; this._selfPeerId = ''; this._authority = null; this._authoritySocket = null;
     this._lastPosition = ''; this._timer = null;
     diagnostics.room = this._roomCode; diagnostics.role = this._create ? 'host' : 'peer';
     queueMicrotask(() => this._start());
@@ -262,6 +269,7 @@ class P2PWebSocket extends EventTarget {
     try {
       this._trRoom = trystero.joinRoom({ appId: APP_ID }, roomId);
     } catch (e) { this._fallbackNative('公共 rendezvous 初始化失败'); return; }
+    this._selfPeerId = String(trystero.selfId || this._trRoom?.selfId || randomId());
     this._hello = this._trRoom.makeAction('dtam-host');
     this._control = this._trRoom.makeAction('dtam-control');
     this._fast = this._trRoom.makeAction('dtam-fast');
@@ -271,7 +279,7 @@ class P2PWebSocket extends EventTarget {
     this._fast.onMessage = (data, meta) => this._onFast(data, meta?.peerId || '');
     this._trRoom.onPeerJoin = peerId => {
       diagnostics.peers++;
-      if (this._authority) this._hello.send({ kind: 'host', v: VERSION }, { target: peerId }).catch?.(() => {});
+      if (this._authority) this._hello.send({ kind: 'host', v: VERSION, createdAt: Number(this._authority.room?.createdAt || 0), peerId: this._selfPeerId }, { target: peerId }).catch?.(() => {});
     };
     this._trRoom.onPeerLeave = peerId => {
       diagnostics.peers = Math.max(0, diagnostics.peers - 1);
@@ -296,7 +304,43 @@ class P2PWebSocket extends EventTarget {
       setTimeout(() => this._finalClose(4409, 'room exists', true), 50);
       return;
     }
-    if (this._authority) return;
+    if (this._authority) {
+      // Split-brain resolution: both peers claim to be Host
+      const remoteCreatedAt = Number(data.createdAt || 0);
+      const remotePeerId = String(data.peerId || peerId);
+      const localCreatedAt = Number(this._authority.room?.createdAt || 0);
+      const localPeerId = String(this._selfPeerId || '');
+
+      // Deterministic priority arbitration:
+      // 1. Earlier created room wins (smaller createdAt).
+      // 2. Tie-breaker: lexicographical order of peerId (smaller peerId wins).
+      const shouldYield = (remoteCreatedAt > 0 && localCreatedAt > 0 && localCreatedAt !== remoteCreatedAt)
+        ? (localCreatedAt > remoteCreatedAt)
+        : (localPeerId.localeCompare(remotePeerId) > 0);
+
+      if (shouldYield) {
+        console.warn('[DTAM P2P] Split-brain detected; yielding host authority to remote peer', remotePeerId);
+        this._authority.shutdown();
+        this._authority = null;
+        this._authoritySocket = null;
+        this._hostPeerId = peerId;
+        diagnostics.hostPeerId = peerId;
+        diagnostics.role = 'peer';
+        diagnostics.mode = 'p2p-direct';
+        setBadge('P2P · WebRTC', '公共 Nostr 只用于撮合；游戏数据为浏览器直连');
+        this._control.send({ __dtamJoin: true, query: this._params.toString(), v: VERSION }, { target: peerId })
+          .catch?.(() => this._fallbackNative('P2P join 发送失败'));
+      } else {
+        // Local authority has higher priority; notify the remote peer so it can step down
+        this._hello.send({
+          kind: 'host',
+          v: VERSION,
+          createdAt: localCreatedAt,
+          peerId: localPeerId,
+        }, { target: peerId }).catch?.(() => {});
+      }
+      return;
+    }
     if (this._hostPeerId && this._hostPeerId !== peerId) return;
     this._hostPeerId = peerId; diagnostics.hostPeerId = peerId; clearTimeout(this._timer);
     this._markOpen('p2p-direct');
@@ -316,7 +360,12 @@ class P2PWebSocket extends EventTarget {
     this._markOpen('browser-host');
     setBadge('P2P 房主 · 浏览器权威', 'GameRoom 正运行在本浏览器；Nostr 仅负责发现其他浏览器');
     await this._authority.attachPlayer(this._authoritySocket, this._params);
-    this._hello.send({ kind: 'host', v: VERSION }).catch?.(() => {});
+    this._hello.send({
+      kind: 'host',
+      v: VERSION,
+      createdAt: Number(this._authority.room?.createdAt || 0),
+      peerId: this._selfPeerId,
+    }).catch?.(() => {});
   }
   async _onControl(data, peerId) {
     if (this._authority) {

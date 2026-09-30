@@ -1591,6 +1591,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border-color: var(--accent);
 }
 
+#taskHoldBtn {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .camera-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .camera-feed { min-height: 120px; padding: 10px; border: 1px solid var(--border); border-radius: var(--shape-md); background: var(--surface-2); }
 .camera-feed > strong { display: block; margin-bottom: 8px; font-size: 12px; }

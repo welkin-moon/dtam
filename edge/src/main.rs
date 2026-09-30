@@ -654,8 +654,9 @@ async fn run_edge_session(
                             if is_reserved_transport_message(&text) {
                                 continue;
                             }
+                            let direct_ready = channels.read().await.direct_ready();
                             if game_active.load(Ordering::Acquire)
-                                && !tunnel_client_message_allowed(&text)
+                                && !tunnel_client_message_allowed(direct_ready, &text)
                             {
                                 continue;
                             }
@@ -670,8 +671,9 @@ async fn run_edge_session(
                             if is_reserved_transport_message(&text) {
                                 continue;
                             }
+                            let direct_ready = channels.read().await.direct_ready();
                             if game_active.load(Ordering::Acquire)
-                                && !tunnel_client_message_allowed(&text)
+                                && !tunnel_client_message_allowed(direct_ready, &text)
                             {
                                 continue;
                             }
@@ -740,11 +742,17 @@ fn is_reserved_transport_message(text: &str) -> bool {
     app_message_type(text).as_deref() == Some("transport_ready")
 }
 
-fn tunnel_client_message_allowed(text: &str) -> bool {
+fn tunnel_client_message_allowed(direct_ready: bool, text: &str) -> bool {
+    if !direct_ready {
+        return true;
+    }
     matches!(app_message_type(text).as_deref(), Some("leave"))
 }
 
-fn tunnel_server_message_allowed(text: &str) -> bool {
+fn tunnel_server_message_allowed(direct_ready: bool, text: &str) -> bool {
+    if !direct_ready {
+        return true;
+    }
     matches!(
         app_message_type(text).as_deref(),
         Some("welcome" | "error" | "game_over" | "lobby_reset")
@@ -789,9 +797,10 @@ async fn send_app_to_browser(
     update_game_active(&text, game_active);
     let direct_required = game_active.load(Ordering::Acquire);
     let fast = is_fast_server_message(&text);
-    let channel = {
+    let (channel, direct_ready) = {
         let locked = channels.read().await;
-        if locked.direct_ready() {
+        let direct_ready = locked.direct_ready();
+        let channel = if direct_ready {
             if fast {
                 locked.fast.clone()
             } else {
@@ -799,7 +808,8 @@ async fn send_app_to_browser(
             }
         } else {
             None
-        }
+        };
+        (channel, direct_ready)
     };
 
     if let Some(channel) = channel {
@@ -812,7 +822,7 @@ async fn send_app_to_browser(
         }
     }
 
-    if direct_required && !tunnel_server_message_allowed(&text) {
+    if direct_required && !tunnel_server_message_allowed(direct_ready, &text) {
         return;
     }
 

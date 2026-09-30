@@ -1,0 +1,16 @@
+# Enforce LF endings on all text files across platforms (prevent Windows CRLF from breaking CSP inline script hashes)
+* text=auto eol=lf
+
+# Explicit binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.mp3 binary
+*.ogg binary
+*.wav binary
+*.exe binary
+*.dll binary
+*.pdb binary

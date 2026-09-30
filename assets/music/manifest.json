@@ -1,8 +1,24 @@
 {
-  "schema": 1,
+  "schema": 2,
+  "generated": true,
   "tracks": [
-    {"name": "夜航", "title": "夜航"},
-    {"name": "中继站", "title": "中继站"},
-    {"name": "草间风", "title": "草间风"}
+    {
+      "name": "草间风",
+      "title": "草间风",
+      "src": "/assets/music/%E8%8D%89%E9%97%B4%E9%A3%8E.mov",
+      "cover": "/assets/music/%E8%8D%89%E9%97%B4%E9%A3%8E.png"
+    },
+    {
+      "name": "夜航",
+      "title": "夜航",
+      "src": "/assets/music/%E5%A4%9C%E8%88%AA.mov",
+      "cover": "/assets/music/%E5%A4%9C%E8%88%AA.png"
+    },
+    {
+      "name": "中继站",
+      "title": "中继站",
+      "src": "/assets/music/%E4%B8%AD%E7%BB%A7%E7%AB%99.mov",
+      "cover": "/assets/music/%E4%B8%AD%E7%BB%A7%E7%AB%99.png"
+    }
   ]
 }

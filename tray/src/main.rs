@@ -324,20 +324,17 @@ mod windows_app {
                     continue;
                 }
                 match interface.ip() {
-                    IpAddr::V4(ip) if ip.is_private() && !ip.is_loopback() => {
-                        if !v4.contains(&ip) {
-                            v4.push(ip);
-                        }
+                    IpAddr::V4(ip) if ip.is_private() && !ip.is_loopback() && !v4.contains(&ip) => {
+                        v4.push(ip);
                     }
                     IpAddr::V6(ip)
                         if !ip.is_loopback()
                             && !ip.is_unspecified()
                             && !ip.is_multicast()
-                            && !ip.is_unicast_link_local() =>
+                            && !ip.is_unicast_link_local()
+                            && !v6.contains(&ip) =>
                     {
-                        if !v6.contains(&ip) {
-                            v6.push(ip);
-                        }
+                        v6.push(ip);
                     }
                     _ => {}
                 }

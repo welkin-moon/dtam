@@ -66,9 +66,7 @@ const COLORS: [&str; 15] = [
     "#ef4444", "#f97316", "#eab308", "#84cc16", "#22c55e", "#10b981", "#14b8a6", "#06b6d4",
     "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#f43f5e", "#ec4899",
 ];
-const ANIMALS: [&str; 6] = [
-    "fox", "blackcat", "graycat", "calico", "rabbit", "redpanda",
-];
+const ANIMALS: [&str; 6] = ["fox", "blackcat", "graycat", "calico", "rabbit", "redpanda"];
 fn normalize_animal(value: &str) -> String {
     if ANIMALS.contains(&value) {
         return value.into();
@@ -844,14 +842,18 @@ fn task_ids() -> Vec<String> {
         .filter(|o| o.id != EMERGENCY_STATION)
         .map(|o| o.id.to_string())
         .collect();
-    ids.extend([
-        "clean-vent-nw",
-        "clean-vent-n",
-        "clean-vent-ne",
-        "clean-vent-sw",
-        "clean-vent-c",
-        "clean-vent-se",
-    ].into_iter().map(str::to_string));
+    ids.extend(
+        [
+            "clean-vent-nw",
+            "clean-vent-n",
+            "clean-vent-ne",
+            "clean-vent-sw",
+            "clean-vent-c",
+            "clean-vent-se",
+        ]
+        .into_iter()
+        .map(str::to_string),
+    );
     ids
 }
 fn task_type(id: &str) -> &'static str {
@@ -1105,7 +1107,9 @@ fn normalize_settings(raw: &Value, base: &Settings) -> Settings {
             Some("meetings") => "meetings".into(),
             Some("never") => "never".into(),
             Some("always") => "always".into(),
-            _ if matches!(base.taskbar_mode.as_str(), "meetings" | "never") => base.taskbar_mode.clone(),
+            _ if matches!(base.taskbar_mode.as_str(), "meetings" | "never") => {
+                base.taskbar_mode.clone()
+            }
             _ => "always".into(),
         },
         music_control: match raw.get("musicControl").and_then(Value::as_str) {
@@ -1677,7 +1681,10 @@ fn begin_task(rt: &mut RoomRuntime, player_id: &str, id: &str) {
     }
     if let Some(vent_id) = clean_vent_for_task(id) {
         if vent_is_cleaning(&rt.room, vent_id, player_id) {
-            rt.send_to(player_id,json!({"t":"task_fail","message":"这个通风口正在被清理","close":true}));
+            rt.send_to(
+                player_id,
+                json!({"t":"task_fail","message":"这个通风口正在被清理","close":true}),
+            );
             return;
         }
     }
@@ -2280,7 +2287,11 @@ fn resolve_meeting(rt: &mut RoomRuntime) {
     {
         return;
     }
-    let votes = rt.room.meeting.as_ref().unwrap().votes.clone();
+    let votes = if let Some(meeting) = rt.room.meeting.as_ref() {
+        meeting.votes.clone()
+    } else {
+        return;
+    };
     let mut counts: HashMap<String, i64> = HashMap::new();
     counts.insert("skip".into(), 0);
     for target in votes.values() {
@@ -2544,7 +2555,10 @@ fn handle_vent(rt: &mut RoomRuntime, player_id: &str, action: &str, vent_id: &st
                 return;
             }
             if vent_is_cleaning(&rt.room, to.id, "") {
-                rt.send_to(player_id,json!({"t":"error","code":"vent_cleaning","message":"目标通风口正在清理"}));
+                rt.send_to(
+                    player_id,
+                    json!({"t":"error","code":"vent_cleaning","message":"目标通风口正在清理"}),
+                );
                 return;
             }
             if let Some(p) = rt.room.players.get_mut(player_id) {
@@ -2641,17 +2655,26 @@ fn return_to_lobby(rt: &mut RoomRuntime, reason: &str) {
     rt.mark_dirty();
 }
 fn reset_lobby(rt: &mut RoomRuntime, player_id: &str) {
-    if rt.room.phase != "ended"
-        || !rt
-            .room
-            .players
-            .get(player_id)
-            .map(|p| p.connected)
-            .unwrap_or(false)
-    {
+    let connected = rt
+        .room
+        .players
+        .get(player_id)
+        .map(|p| p.connected)
+        .unwrap_or(false);
+    if !connected || rt.room.phase == "lobby" {
         return;
     }
-    return_to_lobby(rt, "本局已结束");
+    // The host may abort an active round and return everyone to the existing lobby.
+    // Wire protocol stays unchanged: old clients can still send {t:"reset"}.
+    if rt.room.phase != "ended" && rt.room.host_id != player_id {
+        return;
+    }
+    let reason = if rt.room.phase == "ended" {
+        "本局已结束"
+    } else {
+        "房主结束本局，返回等待室"
+    };
+    return_to_lobby(rt, reason);
 }
 fn cast_restart_vote(rt: &mut RoomRuntime, player_id: &str) {
     let connected_player = rt
@@ -2773,6 +2796,7 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
             let Some(p) = rt.room.players.get(player_id).cloned() else {
                 return true;
             };
+            let in_game = matches!(rt.room.phase.as_str(), "playing" | "meeting");
             let meeting = rt.room.phase == "meeting"
                 && rt
                     .room
@@ -2780,7 +2804,25 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
                     .as_ref()
                     .map(|m| matches!(m.stage.as_str(), "discussion" | "voting" | "result"))
                     .unwrap_or(false);
-            if rt.room.phase == "playing" && p.alive && !meeting {
+
+            let command = text.trim().to_ascii_lowercase();
+            if p.id == rt.room.host_id
+                && matches!(
+                    command.as_str(),
+                    "/重开" | "/重置" | "/restart" | "/rematch"
+                )
+            {
+                if rt.room.phase != "lobby" {
+                    rt.broadcast(
+                        json!({"t":"notice","text":"房主结束本局，返回等待室"}),
+                        None,
+                    );
+                    reset_lobby(rt, player_id);
+                }
+                return true;
+            }
+
+            if in_game && p.alive && !meeting {
                 return true;
             }
             if now - p.last_chat_at < 300 {
@@ -2789,7 +2831,7 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
             if let Some(x) = rt.room.players.get_mut(player_id) {
                 x.last_chat_at = now;
             }
-            let ghost = matches!(rt.room.phase.as_str(), "playing" | "meeting") && !p.alive;
+            let ghost = in_game && !p.alive;
             let channel = if ghost {
                 "ghost"
             } else if meeting {

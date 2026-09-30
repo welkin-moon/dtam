@@ -116,6 +116,7 @@ function installTaskLoadGuard() {
       cancel.click();
       toast.textContent = '任务内容获取超时，请靠近任务点后重试';
       toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2600);
     }, TASK_LOAD_TIMEOUT_MS);
   };
   new MutationObserver(arm).observe(modal, { attributes:true, attributeFilter:['class'] });

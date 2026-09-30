@@ -31,22 +31,32 @@ static string BuildUrl(string[] args)
 {
     if (args.Length == 0) return Home;
     var first = args[0].Trim();
+    if (first.IndexOfAny(new[] { '"', '\r', '\n' }) >= 0 || first.Any(char.IsControl)) return Home;
     if (Regex.IsMatch(first, @"^\d{2}$")) return Home + "?room=" + Uri.EscapeDataString(first);
     if (Uri.TryCreate(first, UriKind.Absolute, out var uri) &&
         uri.Scheme == Uri.UriSchemeHttps &&
         (uri.Host.Equals("d1.lunarlab.uk", StringComparison.OrdinalIgnoreCase) || uri.Host.EndsWith(".dtam.pages.dev", StringComparison.OrdinalIgnoreCase)))
-        return uri.ToString();
+    {
+        var target = uri.ToString();
+        if (target.IndexOfAny(new[] { '"', '\r', '\n' }) >= 0 || target.Any(char.IsControl)) return Home;
+        return target;
+    }
     return Home;
 }
 
 static void LaunchGame(string[] args)
 {
-    Process.Start(new ProcessStartInfo
+    var url = BuildUrl(args);
+    url = url.Replace("\"", "").Replace("\r", "").Replace("\n", "");
+    var psi = new ProcessStartInfo
     {
         FileName = ResolveEdge(),
-        UseShellExecute = true,
-        Arguments = $"--app=\"{BuildUrl(args)}\" --start-maximized --no-first-run"
-    });
+        UseShellExecute = false,
+    };
+    psi.ArgumentList.Add($"--app={url}");
+    psi.ArgumentList.Add("--start-maximized");
+    psi.ArgumentList.Add("--no-first-run");
+    Process.Start(psi);
 }
 
 static bool TrustedUpdateUri(string value, out Uri? uri)

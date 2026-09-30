@@ -7,9 +7,7 @@ const REFRESH_TYPES = new Set([
 
 function parse(value) { try { return JSON.parse(String(value)); } catch (_) { return null; } }
 function refreshHud() {
-  // minimap-hud already listens for resize and performs both visibility and
-  // canvas drawing there. Reuse that path rather than exposing its internals.
-  try { window.dispatchEvent(new Event('resize')); } catch (_) {}
+  try { window.dispatchEvent(new CustomEvent('dtam-minimap-refresh')); } catch (_) {}
 }
 function patchSocket(sock) {
   if (!sock || typeof sock !== 'object' || sock.__dtamMinimapRefresh) return sock;

@@ -291,6 +291,7 @@ function installHud() {
   setInterval(draw, 250);
   document.addEventListener('visibilitychange', draw);
   window.addEventListener('resize', draw);
+  window.addEventListener('dtam-minimap-refresh', draw);
   draw();
 }
 

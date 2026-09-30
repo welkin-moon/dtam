@@ -52,6 +52,30 @@ if (typeof PC === 'function' && !PC.prototype.__dtamExplicitCloseGuard) {
   proto.close = function dtamExplicitClose(...args) {
     this.__dtamExplicitlyClosed = true;
     stats.explicitCloses++;
+
+    try {
+      if (typeof this.getSenders === 'function') {
+        const senders = this.getSenders() || [];
+        for (const sender of senders) {
+          try {
+            if (sender?.track) {
+              sender.track.stop();
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+
+    this.onconnectionstatechange = null;
+    this.oniceconnectionstatechange = null;
+    this.onicecandidate = null;
+    this.onicecandidateerror = null;
+    this.onsignalingstatechange = null;
+    this.onicegatheringstatechange = null;
+    this.ontrack = null;
+    this.ondatachannel = null;
+    this.onnegotiationneeded = null;
+
     return nativeClose.apply(this, args);
   };
 

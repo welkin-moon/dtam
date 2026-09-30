@@ -10,10 +10,23 @@ const stats = window.__DTAM_AUTHORITY_CLOCK__ = window.__DTAM_AUTHORITY_CLOCK__ 
   lastAt:0,
 };
 
-function deadlineDue(room, now = Date.now()) {
+// Monotonic clock baseline resisting system clock modifications
+const perfOrigin = (typeof performance !== 'undefined' && typeof performance.timeOrigin === 'number' && Number.isFinite(performance.timeOrigin))
+  ? performance.timeOrigin
+  : (Date.now() - (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : 0));
+
+function getMonotonicNow() {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return perfOrigin + performance.now();
+  }
+  return Date.now();
+}
+
+function deadlineDue(room, now = getMonotonicNow()) {
   if (!room) return false;
   if (Number(room.doorLockUntil || 0) > 0 && now >= Number(room.doorLockUntil)) return true;
   if (room.phase === 'playing' && Number(room.sabotage?.endsAt || 0) > 0 && now >= Number(room.sabotage.endsAt)) return true;
+  if (Number(room.restartVote?.expiresAt || 0) > 0 && now >= Number(room.restartVote.expiresAt)) return true;
 
   const meeting = room.phase === 'meeting' ? room.meeting : null;
   if (meeting) {
@@ -37,11 +50,12 @@ function deadlineDue(room, now = Date.now()) {
 async function reconcile(room, reason = 'packet') {
   liveRooms.add(room);
   stats.checks++;
-  if (reconciling.has(room) || !deadlineDue(room)) return false;
+  const now = getMonotonicNow();
+  if (reconciling.has(room) || !deadlineDue(room, now)) return false;
   reconciling.add(room);
   stats.reconciles++;
   stats.lastReason = reason;
-  stats.lastAt = Date.now();
+  stats.lastAt = now;
   try {
     await room.alarm();
     return true;
@@ -50,6 +64,23 @@ async function reconcile(room, reason = 'packet') {
     return false;
   } finally {
     reconciling.delete(room);
+  }
+}
+
+// 500ms self-driven heartbeat ticker to prevent countdown deadlock during inactivity/congestion
+const HEARTBEAT_TICKER_INTERVAL_MS = 500;
+let tickerTimer = null;
+
+function runTicker() {
+  for (const room of liveRooms) {
+    reconcile(room, 'clock-ticker').catch(() => {});
+  }
+}
+
+if (typeof setInterval === 'function') {
+  tickerTimer = setInterval(runTicker, HEARTBEAT_TICKER_INTERVAL_MS);
+  if (tickerTimer && typeof tickerTimer.unref === 'function') {
+    tickerTimer.unref();
   }
 }
 
