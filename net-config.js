@@ -55,6 +55,43 @@ export function describeNetworkMode(config = getNetworkConfig()) {
   return 'Auto';
 }
 
+export function getDiagnosticsSummary() {
+  const d = (typeof window !== 'undefined' ? window.__DTAM_NET__ : null) || {};
+  const v3 = (typeof window !== 'undefined' ? window.__DTAM_V3_TRANSPORT__ : null) || {};
+
+  let rttMs = NaN;
+  if (Number.isFinite(d.transportRttMs)) rttMs = d.transportRttMs;
+  else if (Number.isFinite(d.peerRttMs)) rttMs = d.peerRttMs;
+  else if (Number.isFinite(v3.rttMs)) rttMs = v3.rttMs;
+  else if (Number.isFinite(d.rttMs)) rttMs = d.rttMs;
+
+  let activeChannel = 'Mailbox';
+  if (d.activeChannel) {
+    activeChannel = d.activeChannel;
+  } else if (v3.direct || (d.mode && d.mode.includes('direct')) || (d.pair && !d.relay && d.peerCount > 0)) {
+    activeChannel = 'Direct WebRTC';
+  } else if (d.relay || v3.mode === 'tunnel' || v3.mode === 'legacy-tunnel' || d.mode === 'server-fallback' || d.mode === 'server-primary') {
+    activeChannel = 'Edge Tunnel';
+  } else if (d.mode === 'browser-host' || d.mode === 'p2p-recovered-host' || d.mode === 'mailbox') {
+    activeChannel = (d.peerCount > 0 && !d.relay) ? 'Direct WebRTC' : 'Mailbox';
+  }
+
+  const lossRate = Number.isFinite(d.packetLossRate) ? d.packetLossRate : 0;
+  const natType = d.natType || (d.relay ? 'Relayed (TURN / Edge Tunnel)' : d.pair ? 'Direct / STUN Reflexive' : 'NAT Probing…');
+
+  return {
+    rttMs,
+    activeChannel,
+    packetLossRate: lossRate,
+    packetLossRateFormatted: `${(lossRate * 100).toFixed(1)}%`,
+    natType,
+    mode: d.mode || 'boot',
+    pair: d.pair || '',
+    relay: !!d.relay,
+    lastError: d.lastError || ''
+  };
+}
+
 function injectNetworkPanel() {
   if (!debugUiEnabled()) return;
   document.documentElement.classList.add('dtam-debug');

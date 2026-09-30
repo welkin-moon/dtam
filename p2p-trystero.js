@@ -59,9 +59,10 @@ function setBadge(text, title = text) {
 }
 
 class BrowserDOContext {
-  constructor() {
+  constructor(snapshot = null) {
     this.sockets = new Set();
     this.memory = new Map();
+    if (snapshot) this.memory.set('snapshot', snapshot);
     this.room = null;
     this.alarmTimer = null;
     this.ready = Promise.resolve();
@@ -109,11 +110,11 @@ class AuthoritySocket {
 }
 
 class BrowserAuthority {
-  constructor(roomCode, controlAction, fastAction) {
+  constructor(roomCode, controlAction, fastAction, snapshot = null) {
     this.roomCode = roomCode;
     this.controlAction = controlAction;
     this.fastAction = fastAction;
-    this.ctx = new BrowserDOContext();
+    this.ctx = new BrowserDOContext(snapshot);
     this.room = new GameRoom(this.ctx, {});
     this.ctx.attachRoom(this.room);
     this.peerSockets = new Map();
@@ -239,6 +240,13 @@ class P2PWebSocket extends EventTarget {
     this._trRoom = null; this._control = null; this._fast = null; this._hello = null;
     this._hostPeerId = ''; this._selfPeerId = ''; this._authority = null; this._authoritySocket = null;
     this._lastPosition = ''; this._timer = null;
+    this._connectedPeers = new Set();
+    this._peerJoinTimes = new Map();
+    this._lastSnapshot = null;
+    this._snapshotInterval = null;
+    this._livenessInterval = null;
+    this._lastHostPacketTime = Date.now();
+    this._migrating = false;
     diagnostics.room = this._roomCode; diagnostics.role = this._create ? 'host' : 'peer';
     queueMicrotask(() => this._start());
   }
@@ -256,9 +264,32 @@ class P2PWebSocket extends EventTarget {
   _finalClose(code = 1006, reason = '', clean = false) {
     if (this._closed) return;
     this._closed = true; clearTimeout(this._timer); this.readyState = P2PWebSocket.CLOSED;
+    clearInterval(this._snapshotInterval);
+    clearInterval(this._livenessInterval);
     try { this._trRoom?.leave(); } catch (_) {}
     this._authority?.shutdown();
     this._emit('close', makeCloseEvent(code, reason, clean));
+  }
+  _startSnapshotBroadcaster() {
+    clearInterval(this._snapshotInterval);
+    this._snapshotInterval = setInterval(() => {
+      if (!this._authority?.room) return;
+      try {
+        const snap = this._authority.room.snapshot();
+        this._control.send({ __dtamRecovery: true, snapshot: snap, hostPeerId: this._selfPeerId }).catch?.(() => {});
+      } catch (_) {}
+    }, 2000);
+  }
+  _startLivenessWatchdog() {
+    clearInterval(this._livenessInterval);
+    this._lastHostPacketTime = Date.now();
+    this._livenessInterval = setInterval(() => {
+      if (this._closed || this._authority || !this._opened || this._migrating || !this._hostPeerId) return;
+      if (Date.now() - this._lastHostPacketTime > 8000) {
+        console.warn('[DTAM P2P] Host packet silence timeout, initiating migration');
+        this._handleHostMigration('Host packet timeout');
+      }
+    }, 2000);
   }
   async _start() {
     let trystero;
@@ -279,12 +310,18 @@ class P2PWebSocket extends EventTarget {
     this._fast.onMessage = (data, meta) => this._onFast(data, meta?.peerId || '');
     this._trRoom.onPeerJoin = peerId => {
       diagnostics.peers++;
+      this._connectedPeers.add(peerId);
+      if (!this._peerJoinTimes.has(peerId)) this._peerJoinTimes.set(peerId, Date.now());
       if (this._authority) this._hello.send({ kind: 'host', v: VERSION, createdAt: Number(this._authority.room?.createdAt || 0), peerId: this._selfPeerId }, { target: peerId }).catch?.(() => {});
     };
     this._trRoom.onPeerLeave = peerId => {
       diagnostics.peers = Math.max(0, diagnostics.peers - 1);
+      this._connectedPeers.delete(peerId);
+      this._peerJoinTimes.delete(peerId);
       if (this._authority) this._authority.markPeerGone(peerId);
-      if (!this._authority && peerId === this._hostPeerId && this._opened) this._finalClose(4411, 'P2P host left', false);
+      if (!this._authority && peerId === this._hostPeerId && this._opened) {
+        this._handleHostMigration('Host left rendezvous: ' + peerId);
+      }
     };
 
     if (this._create) {
@@ -296,7 +333,15 @@ class P2PWebSocket extends EventTarget {
     }
   }
   _onHello(data, peerId) {
-    if (!data || data.kind !== 'host' || !peerId) return;
+    if (!data) return;
+    if (data.kind === 'host_migrated') {
+      const newHost = String(data.newHostId || peerId || '');
+      if (newHost && newHost !== this._selfPeerId) {
+        this._alignToNewHost(newHost);
+      }
+      return;
+    }
+    if (data.kind !== 'host' || !peerId) return;
     if (this._create && !this._authority) {
       clearTimeout(this._timer);
       this._markOpen('p2p-collision');
@@ -305,21 +350,18 @@ class P2PWebSocket extends EventTarget {
       return;
     }
     if (this._authority) {
-      // Split-brain resolution: both peers claim to be Host
       const remoteCreatedAt = Number(data.createdAt || 0);
       const remotePeerId = String(data.peerId || peerId);
       const localCreatedAt = Number(this._authority.room?.createdAt || 0);
       const localPeerId = String(this._selfPeerId || '');
 
-      // Deterministic priority arbitration:
-      // 1. Earlier created room wins (smaller createdAt).
-      // 2. Tie-breaker: lexicographical order of peerId (smaller peerId wins).
       const shouldYield = (remoteCreatedAt > 0 && localCreatedAt > 0 && localCreatedAt !== remoteCreatedAt)
         ? (localCreatedAt > remoteCreatedAt)
         : (localPeerId.localeCompare(remotePeerId) > 0);
 
       if (shouldYield) {
         console.warn('[DTAM P2P] Split-brain detected; yielding host authority to remote peer', remotePeerId);
+        clearInterval(this._snapshotInterval);
         this._authority.shutdown();
         this._authority = null;
         this._authoritySocket = null;
@@ -330,8 +372,8 @@ class P2PWebSocket extends EventTarget {
         setBadge('P2P · WebRTC', '公共 Nostr 只用于撮合；游戏数据为浏览器直连');
         this._control.send({ __dtamJoin: true, query: this._params.toString(), v: VERSION }, { target: peerId })
           .catch?.(() => this._fallbackNative('P2P join 发送失败'));
+        this._startLivenessWatchdog();
       } else {
-        // Local authority has higher priority; notify the remote peer so it can step down
         this._hello.send({
           kind: 'host',
           v: VERSION,
@@ -344,6 +386,7 @@ class P2PWebSocket extends EventTarget {
     if (this._hostPeerId && this._hostPeerId !== peerId) return;
     this._hostPeerId = peerId; diagnostics.hostPeerId = peerId; clearTimeout(this._timer);
     this._markOpen('p2p-direct');
+    this._startLivenessWatchdog();
     setBadge('P2P · WebRTC', '公共 Nostr 只用于撮合；游戏数据为浏览器直连');
     this._control.send({ __dtamJoin: true, query: this._params.toString(), v: VERSION }, { target: peerId }).catch?.(() => this._fallbackNative('P2P join 发送失败'));
   }
@@ -360,12 +403,101 @@ class P2PWebSocket extends EventTarget {
     this._markOpen('browser-host');
     setBadge('P2P 房主 · 浏览器权威', 'GameRoom 正运行在本浏览器；Nostr 仅负责发现其他浏览器');
     await this._authority.attachPlayer(this._authoritySocket, this._params);
+    this._startSnapshotBroadcaster();
     this._hello.send({
       kind: 'host',
       v: VERSION,
       createdAt: Number(this._authority.room?.createdAt || 0),
       peerId: this._selfPeerId,
     }).catch?.(() => {});
+  }
+  async _handleHostMigration(reason = 'Host offline') {
+    if (this._migrating || this._closed || this._authority) return;
+    this._migrating = true;
+    clearInterval(this._livenessInterval);
+    console.warn('[DTAM P2P] Host offline detected, starting migration:', reason);
+    setBadge('房主断线 · 正在迁移', '检测到房主掉线，正在执行新房主选举');
+
+    const deadHostId = this._hostPeerId;
+    this._hostPeerId = '';
+    diagnostics.hostPeerId = '';
+
+    let snapshot = this._lastSnapshot;
+    if (!snapshot) {
+      try { snapshot = JSON.parse(sessionStorage.getItem('au-dtam-p2p-snapshot:' + this._roomCode) || 'null'); } catch (_) {}
+    }
+
+    const remainingPeers = [this._selfPeerId, ...Array.from(this._connectedPeers)]
+      .filter(id => id !== deadHostId)
+      .sort((a, b) => {
+        const tA = this._peerJoinTimes.get(a) || Date.now();
+        const tB = this._peerJoinTimes.get(b) || Date.now();
+        if (tA !== tB) return tA - tB;
+        return a.localeCompare(b);
+      });
+
+    const electedHostId = remainingPeers[0];
+    const isElected = (electedHostId === this._selfPeerId);
+    console.info(`[DTAM P2P] Migration election: remaining=[${remainingPeers.join(', ')}], elected=${electedHostId}, isSelf=${isElected}`);
+
+    if (isElected) {
+      setBadge('当选新房主 · 恢复权威', '从热备快照唤醒 GameRoom 权威');
+      await this._becomeHostFromSnapshot(snapshot);
+      this._migrating = false;
+      return;
+    }
+
+    this._hostPeerId = electedHostId;
+    diagnostics.hostPeerId = electedHostId;
+    setBadge('正在向新房主对齐…', `新房主: ${electedHostId}`);
+
+    setTimeout(() => {
+      this._migrating = false;
+      if (!this._authority && this._hostPeerId === electedHostId) {
+        this._control.send({ __dtamJoin: true, query: this._params.toString(), v: VERSION }, { target: electedHostId }).catch?.(() => {});
+        this._startLivenessWatchdog();
+      }
+    }, 600);
+  }
+  async _becomeHostFromSnapshot(snapshot = null) {
+    if (this._closed || this._authority) return;
+    this._authority = new BrowserAuthority(this._roomCode, this._control, this._fast, snapshot);
+    await this._authority.ready();
+    this._authoritySocket = new AuthoritySocket(
+      this._authority.ctx,
+      data => this._deliver(data),
+      (code, reason) => this._finalClose(code, reason, code === 1000)
+    );
+    this._authority.localSocket = this._authoritySocket;
+    this._markOpen('browser-host');
+    diagnostics.role = 'host';
+    diagnostics.hostPeerId = this._selfPeerId;
+    setBadge('P2P 房主 · 权威已迁移', '已从快照唤醒房间权威');
+
+    await this._authority.attachPlayer(this._authoritySocket, this._params);
+    this._startSnapshotBroadcaster();
+
+    const newHostId = this._selfPeerId;
+    const announceData = {
+      kind: 'host_migrated',
+      newHostId,
+      v: VERSION,
+      createdAt: Number(this._authority.room?.createdAt || 0),
+      peerId: newHostId,
+    };
+    this._hello.send(announceData).catch?.(() => {});
+    this._control.send({ kind: 'host_migrated', t: 'host_migrated', newHostId }).catch?.(() => {});
+    this._deliver(JSON.stringify({ t: 'host_migrated', kind: 'host_migrated', newHostId }));
+  }
+  _alignToNewHost(newHostId) {
+    if (this._authority || this._selfPeerId === newHostId) return;
+    console.info('[DTAM P2P] Aligning to new host:', newHostId);
+    this._hostPeerId = newHostId;
+    diagnostics.hostPeerId = newHostId;
+    setBadge('P2P · 对齐新房主', `新房主: ${newHostId}`);
+    this._control.send({ __dtamJoin: true, query: this._params.toString(), v: VERSION }, { target: newHostId }).catch?.(() => {});
+    this._deliver(JSON.stringify({ t: 'host_migrated', kind: 'host_migrated', newHostId }));
+    this._startLivenessWatchdog();
   }
   async _onControl(data, peerId) {
     if (this._authority) {
@@ -381,6 +513,21 @@ class P2PWebSocket extends EventTarget {
       await this._authority.receive(sock, typeof data === 'string' ? data : JSON.stringify(data));
       return;
     }
+    this._lastHostPacketTime = Date.now();
+    if (data?.__dtamRecovery) {
+      if (data.snapshot) {
+        this._lastSnapshot = data.snapshot;
+        try { sessionStorage.setItem('au-dtam-p2p-snapshot:' + this._roomCode, JSON.stringify(data.snapshot)); } catch (_) {}
+      }
+      return;
+    }
+    if (data?.kind === 'host_migrated' || data?.t === 'host_migrated') {
+      const newHost = String(data.newHostId || peerId || '');
+      if (newHost && newHost !== this._selfPeerId) {
+        this._alignToNewHost(newHost);
+      }
+      return;
+    }
     if (peerId !== this._hostPeerId) return;
     const text = typeof data === 'string' ? data : JSON.stringify(data);
     const parsed = parseJson(text);
@@ -393,6 +540,7 @@ class P2PWebSocket extends EventTarget {
       await this._authority.receive(sock, typeof data === 'string' ? data : JSON.stringify(data));
       return;
     }
+    this._lastHostPacketTime = Date.now();
     if (peerId !== this._hostPeerId) return;
     this._deliver(typeof data === 'string' ? data : JSON.stringify(data));
   }

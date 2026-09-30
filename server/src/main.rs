@@ -423,6 +423,8 @@ struct Player {
     vent_ready_at: i64,
     vent_exit_at: i64,
     protected_until: i64,
+    #[serde(default)]
+    protected_by: String,
     last_case_id: String,
     last_case_area: String,
     poisoned_by: String,
@@ -1169,7 +1171,8 @@ fn public_meeting(m: &Meeting, my_id: &str) -> Value {
             obj.insert("anonymousVoting".into(), Value::Bool(true));
         }
     }
-    json!({"id":m.id,"stage":m.stage,"reasonText":m.reason_text,"callerId":m.caller_id,"bodyId":m.body_id,"discussionEndsAt":m.discussion_ends_at,"votingEndsAt":m.voting_ends_at,"resumeAt":m.resume_at,"myVote":m.votes.get(my_id).cloned().unwrap_or_default(),"votesCast":m.votes.len(),"eligibleVoters":m.eligible_voters,"anonymousVoting":m.anonymous_voting,"result":result})
+    let voted_player_ids: Vec<String> = m.votes.keys().cloned().collect();
+    json!({"id":m.id,"stage":m.stage,"reasonText":m.reason_text,"callerId":m.caller_id,"bodyId":m.body_id,"discussionEndsAt":m.discussion_ends_at,"votingEndsAt":m.voting_ends_at,"resumeAt":m.resume_at,"myVote":m.votes.get(my_id).cloned().unwrap_or_default(),"votesCast":m.votes.len(),"votedPlayerIds":voted_player_ids,"eligibleVoters":m.eligible_voters,"anonymousVoting":m.anonymous_voting,"result":result})
 }
 fn public_sabotage(s: &Sabotage) -> Value {
     let d = sabotage_def(&s.kind);
@@ -1883,6 +1886,7 @@ fn use_ability(rt: &mut RoomRuntime, player_id: &str, target_id: &str) {
         }
         if let Some(x) = rt.room.players.get_mut(target_id) {
             x.protected_until = now + GUARDIAN_PROTECT_MS;
+            x.protected_by = player_id.to_string();
         }
         if let Some(x) = rt.room.players.get_mut(player_id) {
             x.ability_ready_at = now + GUARDIAN_COOLDOWN_MS;
@@ -2029,15 +2033,29 @@ fn kill_player(rt: &mut RoomRuntime, killer_id: &str, target_id: &str) {
         return;
     }
     if t.protected_until > now {
+        if let Some(x) = rt.room.players.get_mut(target_id) {
+            x.protected_until = 0;
+            x.protected_by.clear();
+        }
         if let Some(p) = rt.room.players.get_mut(killer_id) {
-            p.kill_ready_at = now + 5000;
+            p.kill_ready_at = now + 10000;
         }
         rt.send_to(
             killer_id,
-            json!({"t":"kill_blocked","killReadyAt":now+5000}),
+            json!({"t":"kill_blocked","killReadyAt":now+10000}),
         );
-        rt.send_to(target_id, json!({"t":"protected_hit"}));
+        rt.send_to(
+            target_id,
+            json!({"t":"protected_hit","message":"护盾保护了你！"}),
+        );
+        if !t.protected_by.is_empty() {
+            rt.send_to(
+                &t.protected_by,
+                json!({"t":"shield_blocked","targetId":target_id,"targetName":t.name}),
+            );
+        }
         rt.mark_dirty();
+        rt.broadcast_state();
         return;
     }
     let body_id = Uuid::new_v4().to_string();
@@ -2337,13 +2355,14 @@ fn resolve_meeting(rt: &mut RoomRuntime) {
             }
         )
     } else if tie {
-        "票数持平，无人被放逐。".into()
+        "平票，无人被放逐。".into()
     } else if skip > 0 && skip >= top {
-        "跳过票占优，无人被放逐。".into()
+        "弃票占优，无人被放逐。".into()
     } else {
         "无人被放逐。".into()
     };
-    let result = json!({"text":text,"ejectedId":ejected.as_ref().map(|e|e.id.clone()).unwrap_or_default(),"tie":tie,"counts":counts,"votes":votes});
+    let skip_wins = ejected.is_none() && (skip >= top && skip > 0);
+    let result = json!({"text":text,"ejectedId":ejected.as_ref().map(|e|e.id.clone()).unwrap_or_default(),"tie":tie,"skipWins":skip_wins,"counts":counts,"votes":votes});
     if let Some(m) = rt.room.meeting.as_mut() {
         m.stage = "result".into();
         m.result = Some(result);
@@ -3592,6 +3611,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
                 vent_ready_at: 0,
                 vent_exit_at: 0,
                 protected_until: 0,
+                protected_by: String::new(),
                 last_case_id: String::new(),
                 last_case_area: String::new(),
                 poisoned_by: String::new(),

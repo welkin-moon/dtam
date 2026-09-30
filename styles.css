@@ -755,10 +755,31 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   aspect-ratio: 1;
   border: 2px solid color-mix(in srgb, var(--text) 32%, transparent);
   border-radius: 50%;
-  background: color-mix(in srgb, var(--surface) 22%, transparent);
+  background:
+    radial-gradient(circle, transparent 20%, color-mix(in srgb, var(--text) 12%, transparent) 21%, transparent 23%),
+    radial-gradient(circle, transparent 58%, color-mix(in srgb, var(--text) 14%, transparent) 59%, transparent 61%),
+    color-mix(in srgb, var(--surface) 28%, transparent);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   touch-action: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#joystick::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    linear-gradient(to right, transparent calc(50% - 1px), color-mix(in srgb, var(--text) 16%, transparent) calc(50% - 1px), color-mix(in srgb, var(--text) 16%, transparent) calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom, transparent calc(50% - 1px), color-mix(in srgb, var(--text) 16%, transparent) calc(50% - 1px), color-mix(in srgb, var(--text) 16%, transparent) calc(50% + 1px), transparent calc(50% + 1px));
+  pointer-events: none;
+  opacity: 0.75;
+}
+
+#joystick.active {
+  border-color: rgba(56, 189, 248, 0.75);
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.32), inset 0 0 12px rgba(56, 189, 248, 0.16);
 }
 
 #joystick .knob {
@@ -773,7 +794,15 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border: 2px solid color-mix(in srgb, var(--surface) 60%, transparent);
   box-shadow: var(--shadow);
   pointer-events: none;
+  transition: transform 0.04s ease-out;
 }
+
+#joystick.active .knob {
+  border-color: rgba(56, 189, 248, 0.9);
+  background: radial-gradient(circle at 45% 45%, rgba(255,255,255,0.95), rgba(56,189,248,0.85) 60%, rgba(14,165,233,0.7) 100%);
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.8), var(--shadow);
+}
+
 
 #actionStack {
   position: fixed;
@@ -2369,3 +2398,512 @@ html[data-direct-reconnecting] #game::after {
   #lobbyStartBar { margin-inline: -12px; padding-inline: 12px; }
   #lobbyStartBar #startGameBtn { width: min(190px, 48%); }
 }
+
+/* ==========================================================================
+   Impostor Kill Target Pulse (#actionStack #killBtn.kill-ready)
+   ========================================================================== */
+#actionStack #killBtn.kill-ready {
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
+  border-color: #fca5a5 !important;
+  color: #fff !important;
+  animation: dtam-kill-pulse 1.15s infinite ease-in-out;
+  transform-origin: center;
+}
+@keyframes dtam-kill-pulse {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.65), inset 0 0 6px rgba(255, 255, 255, 0.25);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(239, 68, 68, 0.95), 0 0 38px rgba(239, 68, 68, 0.45), inset 0 0 12px rgba(255, 255, 255, 0.45);
+    transform: scale(1.06);
+  }
+}
+
+/* ==========================================================================
+   Game Settings Modal (#settingsModal)
+   ========================================================================== */
+.dtam-settings-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.dtam-settings-overlay.show {
+  display: flex;
+}
+.dtam-settings-card {
+  width: min(440px, 94vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  animation: dtam-modal-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes dtam-modal-pop {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+.dtam-settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.dtam-settings-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+.dtam-settings-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dtam-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-md);
+}
+.dtam-settings-section h3 {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--text-muted);
+}
+.dtam-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+}
+.dtam-setting-row label,
+.dtam-setting-row span {
+  font-size: 14px;
+  font-weight: 600;
+}
+.dtam-slider {
+  flex: 1;
+  max-width: 160px;
+  accent-color: var(--primary);
+  height: 6px;
+  cursor: pointer;
+}
+.dtam-switch {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.dtam-settings-foot {
+  padding: 12px 20px 16px;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+/* ==========================================================================
+   Full-Screen Ejection Cinematic (#ejectionOverlay)
+   ========================================================================== */
+.dtam-eject-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: #030712;
+  overflow: hidden;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  touch-action: none;
+}
+.dtam-eject-overlay.show {
+  display: flex;
+  animation: dtam-eject-fadein 0.4s ease forwards;
+}
+@keyframes dtam-eject-fadein {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+#ejectionCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.dtam-eject-scene {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.dtam-eject-astronaut {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.45));
+}
+.dtam-eject-astronaut.dtam-drifting {
+  animation: dtam-astronaut-drift 6.4s linear infinite;
+}
+@keyframes dtam-astronaut-drift {
+  0% {
+    transform: translate(-46vw, 7vh) rotate(0deg);
+  }
+  100% {
+    transform: translate(46vw, -7vh) rotate(540deg);
+  }
+}
+.dtam-eject-typewriter-wrap {
+  position: relative;
+  z-index: 3;
+  padding: 24px 34px;
+  background: rgba(3, 7, 18, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--shape-lg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 0 35px rgba(0, 0, 0, 0.8);
+  max-width: min(720px, 92vw);
+  text-align: center;
+}
+.dtam-eject-typewriter {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: clamp(20px, 4.2vw, 32px);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #f8fafc;
+  line-height: 1.5;
+  text-shadow: 0 0 14px rgba(255, 255, 255, 0.45), 0 0 28px rgba(56, 189, 248, 0.35);
+  min-height: 1.5em;
+}
+.dtam-eject-typewriter::after {
+  content: '▋';
+  display: inline-block;
+  color: #38bdf8;
+  margin-left: 6px;
+  animation: dtam-cursor-blink 0.75s infinite step-start;
+}
+@keyframes dtam-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.dtam-eject-skip-btn {
+  position: absolute;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  right: max(24px, env(safe-area-inset-right));
+  z-index: 4;
+  padding: 8px 18px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 999px;
+  color: #f3f4f6;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: all 0.2s ease;
+}
+.dtam-eject-skip-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.48);
+}
+
+/* ==========================================================================
+   Engineer Vent Countdown Badge (#ventOverlay)
+   ========================================================================== */
+.engineer-vent-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 6px 0 10px;
+  padding: 8px 12px;
+  border-radius: var(--shape-md);
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.36);
+  color: #10b981;
+  font-weight: 750;
+  font-size: 13px;
+}
+.engineer-vent-badge.urgent {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.48);
+  color: #ef4444;
+  animation: dtam-urgent-flash 0.8s infinite alternate;
+}
+@keyframes dtam-urgent-flash {
+  from { opacity: 0.8; }
+  to { opacity: 1; }
+}
+
+/* ==========================================================================
+   Meeting Enhancements (Timer Bar, Vote Badges, Verdict Banner)
+   ========================================================================== */
+.meeting-timer-bar-wrap {
+  width: 100%;
+  height: 6px;
+  background: var(--surface-3);
+  border-radius: var(--shape-full);
+  margin: 6px 0 10px;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.meeting-timer-bar {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #3b82f6, #06b6d4);
+  border-radius: var(--shape-full);
+  transition: width 250ms linear, background 300ms ease;
+}
+.meeting-timer-bar.warning {
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+  animation: timerPulse 0.6s infinite alternate;
+}
+@keyframes timerPulse {
+  from { opacity: 0.75; }
+  to { opacity: 1; }
+}
+
+.vote-card .vote-status-badge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 750;
+  padding: 2px 7px;
+  border-radius: var(--shape-full);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.vote-status-badge.voted {
+  background: rgba(34, 197, 94, 0.18);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+.vote-status-badge.voted::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+.vote-status-badge.pending {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--muted);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+.vote-status-badge.pending::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+}
+
+.meeting-verdict-banner {
+  margin: 10px 0 16px;
+  padding: 14px 18px;
+  border-radius: var(--shape-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  animation: bannerPop 320ms var(--motion-ease-emphasis);
+}
+@keyframes bannerPop {
+  0% { transform: scale(0.92); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.meeting-verdict-banner.tie-banner {
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.2), rgba(245, 158, 11, 0.1));
+  border: 1.5px solid rgba(234, 179, 8, 0.5);
+  box-shadow: 0 4px 16px rgba(234, 179, 8, 0.18);
+}
+.meeting-verdict-banner.eject-banner {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.1));
+  border: 1.5px solid rgba(239, 68, 68, 0.5);
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.18);
+}
+.verdict-banner-tag {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tie-banner .verdict-banner-tag { color: #f59e0b; }
+.eject-banner .verdict-banner-tag { color: #ef4444; }
+.verdict-banner-title {
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.verdict-banner-sub {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ==========================================================================
+   Scientist Vitals Battery UI
+   ========================================================================== */
+.vitals-battery-box {
+  margin: 10px 0 6px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-md);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vitals-battery-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+.vitals-battery-track {
+  width: 100%;
+  height: 8px;
+  background: var(--surface-3);
+  border-radius: var(--shape-full);
+  overflow: hidden;
+}
+.vitals-battery-level {
+  height: 100%;
+  width: 100%;
+  background: #22c55e;
+  border-radius: var(--shape-full);
+  transition: width 150ms linear, background 300ms ease;
+}
+.vitals-battery-level.warn {
+  background: #f59e0b;
+}
+.vitals-battery-level.critical {
+  background: #ef4444;
+}
+
+/* ==========================================================================
+   Sabotage Crisis Banner (Reactor & O2)
+   ========================================================================== */
+#crisisBanner {
+  position: absolute;
+  top: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  width: min(92vw, 480px);
+  padding: 10px 16px;
+  border-radius: var(--shape-lg);
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.95), rgba(153, 27, 27, 0.95));
+  border: 1.5px solid rgba(254, 202, 202, 0.5);
+  box-shadow: 0 4px 20px rgba(220, 38, 38, 0.5), 0 0 15px rgba(239, 68, 68, 0.4);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: crisisPulse 1.2s infinite ease-in-out;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+#crisisBanner[hidden] {
+  display: none !important;
+}
+@keyframes crisisPulse {
+  0%, 100% {
+    box-shadow: 0 4px 18px rgba(220, 38, 38, 0.5), 0 0 10px rgba(239, 68, 68, 0.35);
+  }
+  50% {
+    box-shadow: 0 6px 28px rgba(220, 38, 38, 0.8), 0 0 24px rgba(239, 68, 68, 0.65);
+  }
+}
+.crisis-pulsar {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fef08a;
+  box-shadow: 0 0 10px #fef08a;
+  animation: pulsarFlicker 0.6s infinite alternate;
+  flex: 0 0 auto;
+}
+@keyframes pulsarFlicker {
+  from { transform: scale(0.85); opacity: 0.7; }
+  to { transform: scale(1.2); opacity: 1; }
+}
+.crisis-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.crisis-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+}
+.crisis-badge {
+  font-size: 10px;
+  font-weight: 850;
+  padding: 1px 5px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+}
+.crisis-desc {
+  font-size: 12px;
+  opacity: 0.94;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.crisis-countdown {
+  font-size: 22px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: #fef08a;
+  text-shadow: 0 0 8px rgba(254, 240, 138, 0.65);
+  flex: 0 0 auto;
+}
+.crisis-countdown.urgent {
+  color: #fff;
+  animation: urgentShake 0.4s infinite alternate;
+}
+@keyframes urgentShake {
+  from { transform: scale(1); }
+  to { transform: scale(1.15); }
+}
+
+

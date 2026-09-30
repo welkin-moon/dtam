@@ -138,6 +138,16 @@ function collectDiagnosticData(){
   const lastError=d.lastError||'';
   const recovering=!!d.recovering;
 
+  let activeChannel='Mailbox';
+  if(d.activeChannel)activeChannel=d.activeChannel;
+  else if(v3.direct||(d.mode&&d.mode.includes('direct'))||(d.pair&&!d.relay&&d.peerCount>0))activeChannel='Direct WebRTC';
+  else if(d.relay||v3.mode==='tunnel'||v3.mode==='legacy-tunnel'||d.mode==='server-fallback'||d.mode==='server-primary')activeChannel='Edge Tunnel';
+  else if(d.mode==='browser-host'||d.mode==='p2p-recovered-host'||d.mode==='mailbox')activeChannel=(d.peerCount>0&&!d.relay)?'Direct WebRTC':'Mailbox';
+
+  const lossNum=Number.isFinite(d.packetLossRate)?d.packetLossRate:0;
+  const packetLossRate=`${(lossNum*100).toFixed(1)}%`;
+  const natType=d.natType||(d.relay?'Relayed (TURN / Edge Tunnel)':d.pair?'Direct / STUN Reflexive':'NAT 探测中…');
+
   return {
     roomCode,
     playerCount,
@@ -147,6 +157,9 @@ function collectDiagnosticData(){
     connText,
     configMode,
     currentMode,
+    activeChannel,
+    packetLossRate,
+    natType,
     icePair,
     voiceBackend,
     serverUrl:c.serverUrl||'',
@@ -168,6 +181,9 @@ function formatDiagnosticText(data){
     `房间号：${data.roomCode} | 在线玩家：${data.playerCount}`,
     `连接状态：${data.connText} (${data.connState})`,
     `网络延迟：${data.latencyText} [${data.latencyQuality}]`,
+    `传输通道：${data.activeChannel}`,
+    `丢包率：${data.packetLossRate}`,
+    `NAT 探测：${data.natType}`,
     `配置模式：${data.configMode}`,
     `运行线路：${data.currentMode}`,
     `ICE 配对：${data.icePair}`,
@@ -201,7 +217,7 @@ function renderDiagBody(data){
     }
   };
 
-  const latency=escapeDiag(data.latencyText),room=escapeDiag(data.roomCode),count=escapeDiag(data.playerCount),configMode=escapeDiag(data.configMode),currentMode=escapeDiag(data.currentMode),icePair=escapeDiag(data.icePair),voiceBackend=escapeDiag(data.voiceBackend),reqCount=escapeDiag(data.reqCount),suppressed=escapeDiag(data.suppressed),pollInterval=escapeDiag(data.pollInterval),lastError=escapeDiag(data.lastError);
+  const latency=escapeDiag(data.latencyText),room=escapeDiag(data.roomCode),count=escapeDiag(data.playerCount),configMode=escapeDiag(data.configMode),currentMode=escapeDiag(data.currentMode),activeChannel=escapeDiag(data.activeChannel),packetLossRate=escapeDiag(data.packetLossRate),natType=escapeDiag(data.natType),icePair=escapeDiag(data.icePair),voiceBackend=escapeDiag(data.voiceBackend),reqCount=escapeDiag(data.reqCount),suppressed=escapeDiag(data.suppressed),pollInterval=escapeDiag(data.pollInterval),lastError=escapeDiag(data.lastError);
   body.innerHTML=`
     <div class="dtam-diag-highlight">
       <div class="dtam-diag-stat">
@@ -220,6 +236,14 @@ function renderDiagBody(data){
     </div>
     <div class="dtam-diag-grid">
       <div class="dtam-diag-cell">
+        <span class="dtam-diag-label">传输通道</span>
+        <strong class="dtam-diag-val">${activeChannel}</strong>
+      </div>
+      <div class="dtam-diag-cell">
+        <span class="dtam-diag-label">丢包率</span>
+        <strong class="dtam-diag-val font-mono">${packetLossRate}</strong>
+      </div>
+      <div class="dtam-diag-cell">
         <span class="dtam-diag-label">配置模式</span>
         <strong class="dtam-diag-val">${configMode}</strong>
       </div>
@@ -228,8 +252,8 @@ function renderDiagBody(data){
         <strong class="dtam-diag-val">${currentMode}${data.directRequired?` <small class="dtam-diag-pill" data-quality="${data.direct?'good':'bad'}">${data.direct?'直连已验证':'等待直连'}</small>`:''}</strong>
       </div>
       <div class="dtam-diag-cell">
-        <span class="dtam-diag-label">ICE 节点 / 线路</span>
-        <strong class="dtam-diag-val font-mono">${icePair}</strong>
+        <span class="dtam-diag-label">ICE 节点 / NAT 探测</span>
+        <strong class="dtam-diag-val font-mono">${icePair} · ${natType}</strong>
       </div>
       <div class="dtam-diag-cell">
         <span class="dtam-diag-label">语音后端</span>
@@ -246,7 +270,7 @@ function renderDiagBody(data){
     </div>
     ${data.lastError?`<div class="dtam-diag-error-box"><span class="dtam-diag-error-title">⚠ 异常记录</span><p>${lastError}</p></div>`:''}
     ${data.recovering?`<div class="dtam-diag-warn-box"><span>🔄 房主迁移恢复进行中…</span></div>`:''}
-    <div class="dtam-diag-foot-note">轻触延迟或状态徽章可随时调出此诊断面板</div>
+    <div class="dtam-diag-foot-note">轻触延迟或状态徽章（或按键盘 F3）可随时调出此诊断面板</div>
   `;
 }
 
@@ -316,6 +340,15 @@ function installNetworkDiagnostics(){
   bindTrigger(document.getElementById('latencyStatus'));
   bindTrigger(document.getElementById('connectionStatus'));
 
+  window.addEventListener('keydown',e=>{
+    if(e.key==='F3'){
+      e.preventDefault();
+      const overlay=document.getElementById('dtamDiagOverlay');
+      if(overlay&&overlay.classList.contains('open'))closeDiagDialog();
+      else openDiagDialog();
+    }
+  });
+
   if(DEBUG_UI){
     const more=document.getElementById('hudMoreMenu');
     if(more&&!document.getElementById('networkDiagBtn')){
@@ -371,5 +404,79 @@ function installPlayerCopyCleanups(){
   if(toast)new MutationObserver(()=>rewrite(toast)).observe(toast,{childList:true,subtree:true,characterData:true});
 }
 
-function boot(){installInputSafety();installTaskFailureRecovery();installShellState();installPlayerCopyCleanups();installRulePersistence();installHostVisibilityWarning();installNetworkDiagnostics();installInviteCopy()}
+function isAppFullscreen(){
+  return !!(document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement);
+}
+
+function toggleAppFullscreen(){
+  const doc=document.documentElement;
+  if(!isAppFullscreen()){
+    if(doc.requestFullscreen){
+      doc.requestFullscreen().catch(()=>{});
+    }else if(doc.webkitRequestFullscreen){
+      doc.webkitRequestFullscreen();
+    }else if(doc.mozRequestFullScreen){
+      doc.mozRequestFullScreen();
+    }
+  }else{
+    if(document.exitFullscreen){
+      document.exitFullscreen().catch(()=>{});
+    }else if(document.webkitExitFullscreen){
+      document.webkitExitFullscreen();
+    }else if(document.mozCancelFullScreen){
+      document.mozCancelFullScreen();
+    }
+  }
+}
+
+function installFullscreenToggle(){
+  const more=document.getElementById('hudMoreMenu');
+  if(!more||document.getElementById('fullscreenToggleBtn'))return;
+  const btn=document.createElement('button');
+  btn.type='button';
+  btn.id='fullscreenToggleBtn';
+  const updateText=()=>{btn.textContent=isAppFullscreen()?'退出全屏':'全屏模式'};
+  updateText();
+  btn.onclick=()=>{
+    toggleAppFullscreen();
+    setTimeout(updateText,150);
+  };
+  more.insertBefore(btn,more.lastElementChild);
+  document.addEventListener('fullscreenchange',updateText);
+  document.addEventListener('webkitfullscreenchange',updateText);
+}
+
+function installMacWebKitCompatibility(){
+  const unlockAudio=()=>{
+    try{
+      if(window.sfxCtx&&(window.sfxCtx.state==='suspended'||window.sfxCtx.state==='interrupted')){
+        window.sfxCtx.resume().catch(()=>{});
+      }
+    }catch(_){}
+    const unlockBtn=document.getElementById('voiceUnlockBtn');
+    if(unlockBtn&&!unlockBtn.hidden){
+      try{unlockBtn.click();}catch(_){}
+    }
+  };
+  window.addEventListener('pointerdown',unlockAudio,{capture:false,passive:true});
+  window.addEventListener('keydown',unlockAudio,{capture:false,passive:true});
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible')unlockAudio();
+  });
+
+  window.addEventListener('keydown',e=>{
+    if(isTypingTarget(e.target))return;
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space',' '].includes(e.key)){
+      e.preventDefault();
+    }
+    if(e.key==='F11'||(e.key.toLowerCase()==='f'&&e.ctrlKey&&e.metaKey)){
+      e.preventDefault();
+      toggleAppFullscreen();
+    }
+  },{capture:false,passive:false});
+
+  installFullscreenToggle();
+}
+
+function boot(){installInputSafety();installTaskFailureRecovery();installShellState();installPlayerCopyCleanups();installRulePersistence();installHostVisibilityWarning();installNetworkDiagnostics();installInviteCopy();installMacWebKitCompatibility()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();

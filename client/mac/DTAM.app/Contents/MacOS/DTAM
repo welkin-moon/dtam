@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# DTAM (Among Us 东滩版) - macOS App Native Entry
+# Standalone Zero-Signature Web Application Wrapper
+# ==============================================================================
+
+set -o pipefail
+
+DEFAULT_URL="https://d1.lunarlab.uk/"
+TARGET_URL="$DEFAULT_URL"
+
+# Filter out macOS LaunchServices Process Serial Number argument (-psn_*)
+RAW_ARG=""
+for arg in "$@"; do
+    if [[ "$arg" =~ ^-psn_ ]]; then
+        continue
+    fi
+    if [[ -z "$RAW_ARG" ]]; then
+        RAW_ARG="$arg"
+    fi
+done
+
+# Resolve launch URL from parameters
+if [[ -n "$RAW_ARG" ]]; then
+    # Sanitize input: strip quotes, newlines, control characters
+    CLEAN_ARG=$(echo "$RAW_ARG" | tr -d '"\r\n\\' | tr -d '[:cntrl:]')
+
+    # Case 1: Pure 2-digit room code (e.g., "45")
+    if [[ "$CLEAN_ARG" =~ ^[0-9]{2}$ ]]; then
+        TARGET_URL="${DEFAULT_URL}?room=${CLEAN_ARG}"
+    # Case 2: Deep Link scheme dtam://join?room=45 or dtam://join/45
+    elif [[ "$CLEAN_ARG" =~ ^dtam://join.*room=([0-9]{2}) ]]; then
+        ROOM_CODE="${BASH_REMATCH[1]}"
+        TARGET_URL="${DEFAULT_URL}?room=${ROOM_CODE}"
+    elif [[ "$CLEAN_ARG" =~ ^dtam://join/([0-9]{2}) ]]; then
+        ROOM_CODE="${BASH_REMATCH[1]}"
+        TARGET_URL="${DEFAULT_URL}?room=${ROOM_CODE}"
+    # Case 3: Canonical HTTPS URL (d1.lunarlab.uk or Pages backup domain)
+    elif [[ "$CLEAN_ARG" =~ ^https://(d1\.lunarlab\.uk|.*\.dtam\.pages\.dev)(/.*)?$ ]]; then
+        TARGET_URL="$CLEAN_ARG"
+    fi
+fi
+
+# Locate Chromium-based browsers for standalone App Mode (Edge, Chrome, Brave, Chromium)
+BROWSER_BIN=""
+CANDIDATES=(
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
+    "$HOME/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    "$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+    "$HOME/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+    "/Applications/Chromium.app/Contents/MacOS/Chromium"
+    "$HOME/Applications/Chromium.app/Contents/MacOS/Chromium"
+)
+
+for bin in "${CANDIDATES[@]}"; do
+    if [[ -x "$bin" ]]; then
+        BROWSER_BIN="$bin"
+        break
+    fi
+done
+
+# Launch strategy:
+# 1. Chromium App Mode (frameless native-like standalone window, hardware accelerated)
+if [[ -n "$BROWSER_BIN" ]]; then
+    exec "$BROWSER_BIN" \
+        --app="$TARGET_URL" \
+        --start-maximized \
+        --no-first-run \
+        --no-default-browser-check \
+        --enable-features=WebRTCPipeWireCapturer \
+        --autoplay-policy=no-user-gesture-required
+fi
+
+# 2. Safari Fallback
+if [[ -d "/Applications/Safari.app" || -d "/System/Cryptexes/OS/System/Applications/Safari.app" ]]; then
+    open -a Safari "$TARGET_URL"
+    exit 0
+fi
+
+# 3. System Default Fallback
+if command -v open >/dev/null 2>&1; then
+    open "$TARGET_URL"
+    exit 0
+fi
+
+# 4. Error notification if no browser found
+if command -v osascript >/dev/null 2>&1; then
+    osascript -e 'display alert "未找到兼容的浏览器" message "运行 DTAM 需要 Microsoft Edge、Google Chrome 或 Safari 浏览器。请安装任一浏览器后重试。" as critical'
+fi
+exit 1
