@@ -1,4 +1,4 @@
-import { GameRoom } from './worker.js?v=20260824-direct-m3e1';
+import { GameRoom } from './worker.js?v=20261006-playfix1';
 
 const RECONNECT_GRACE_MS = 180000;
 const liveRooms = new Set();
@@ -23,7 +23,7 @@ function getMonotonicNow() {
 }
 
 function deadlineDue(room, now = getMonotonicNow()) {
-  if (!room) return false;
+  if (!room || room.ctx?.closed) return false;
   if (Number(room.doorLockUntil || 0) > 0 && now >= Number(room.doorLockUntil)) return true;
   if (room.phase === 'playing' && Number(room.sabotage?.endsAt || 0) > 0 && now >= Number(room.sabotage.endsAt)) return true;
   if (Number(room.restartVote?.expiresAt || 0) > 0 && now >= Number(room.restartVote.expiresAt)) return true;
@@ -73,6 +73,7 @@ let tickerTimer = null;
 
 function runTicker() {
   for (const room of liveRooms) {
+    if (room.ctx?.closed) { liveRooms.delete(room); continue; }
     reconcile(room, 'clock-ticker').catch(() => {});
   }
 }

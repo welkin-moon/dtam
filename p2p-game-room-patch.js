@@ -1,4 +1,4 @@
-import { GameRoom } from './worker.js?v=20260824-direct-m3e1';
+import { GameRoom } from './worker.js?v=20261006-playfix1';
 
 const VOICE_SYNC = 'https://voice.lunarlab.uk/v1/sync';
 const VOICE_SYNC_DEBOUNCE_MS = 120;
@@ -19,6 +19,7 @@ function voiceSignature(room) {
 }
 
 function scheduleVoiceSync(room) {
+  if (room?.ctx?.closed) return;
   const host = window.__DTAM_HOST_SIGNAL__;
   if (!host?.room || !host?.hostToken || host.room.length !== 2) return;
   const signature = voiceSignature(room);
@@ -36,7 +37,7 @@ function scheduleVoiceSync(room) {
   const delay = state.retryAt > now ? Math.max(VOICE_SYNC_DEBOUNCE_MS, state.retryAt - now) : VOICE_SYNC_DEBOUNCE_MS;
   state.timer = setTimeout(async () => {
     state.timer = null;
-    if (state.inFlight) return;
+    if (room?.ctx?.closed || state.inFlight) return;
     state.inFlight = true;
     state.pending = false;
     const current = voiceSignature(room);
@@ -74,15 +75,6 @@ GameRoom.prototype.persistNow = async function patchedPersistNow(...args) {
   return out;
 };
 
-const originalVoiceDirectory = GameRoom.prototype.voiceDirectory;
-GameRoom.prototype.voiceDirectory = function patchedVoiceDirectory(viewer = null) {
-  if (this.phase !== 'meeting') return originalVoiceDirectory.call(this, viewer);
-  const phase = this.phase;
-  this.phase = 'playing';
-  try { return originalVoiceDirectory.call(this, viewer); }
-  finally { this.phase = phase; }
-};
-
 const originalWebSocketMessage = GameRoom.prototype.webSocketMessage;
 GameRoom.prototype.webSocketMessage = async function patchedBrowserHostMessage(ws, message) {
   let packet = null;
@@ -90,18 +82,6 @@ GameRoom.prototype.webSocketMessage = async function patchedBrowserHostMessage(w
     const text = typeof message === 'string' ? message : new TextDecoder().decode(message);
     packet = JSON.parse(text);
   } catch (_) {}
-
-  if (packet?.t === 'ping') {
-    try { ws.send(JSON.stringify({ t:'pong', at:packet.at, seq:packet.seq, serverAt:Date.now() })); } catch (_) {}
-    return;
-  }
-
-  if (packet?.t === 'chat' && this.phase === 'meeting') {
-    const phase = this.phase;
-    this.phase = 'playing';
-    try { return await originalWebSocketMessage.call(this, ws, message); }
-    finally { this.phase = phase; }
-  }
 
   const result = await originalWebSocketMessage.call(this, ws, message);
   if (['voice_publish','voice_state','start','kill','report','emergency','vote','reset','leave'].includes(String(packet?.t || ''))) {

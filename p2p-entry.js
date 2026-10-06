@@ -1,4 +1,4 @@
-import { GameRoom } from './worker.js?v=20260919-servergate1';
+import { GameRoom } from './worker.js?v=20261006-playfix1';
 
 const NativeWebSocket = window.WebSocket;
 const NativeRTCPeerConnection = window.RTCPeerConnection;

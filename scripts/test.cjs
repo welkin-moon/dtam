@@ -7,13 +7,15 @@ const hybrid=fs.readFileSync('hybrid-transport.js','utf8');
 const playerCss=fs.readFileSync('player-shell.css','utf8');
 const worker=fs.readFileSync('worker.js','utf8');
 const polish=fs.readFileSync('game-polish.js','utf8');
+const bootstrap=fs.readFileSync('bootstrap.js','utf8');
 const signalBudget=fs.readFileSync('signal-budget.js','utf8');
 const signalWorker=fs.readFileSync('workers/p2p-signal-v2.js','utf8');
 const server=fs.readFileSync('server/src/main.rs','utf8');
 
 function assert(condition,message){if(!condition)throw new Error(`[2.8 test] ${message}`);}
-function includes(haystack,needle,message){assert(haystack.includes(needle),message);}
-function excludes(haystack,needle,message){assert(!haystack.includes(needle),message);}
+function compactOutsideStrings(value){let out='',quote='',escaped=false;for(const ch of String(value)){if(quote){out+=ch;if(escaped)escaped=false;else if(ch==='\\')escaped=true;else if(ch===quote)quote='';continue;}if(ch==='"'||ch==="'"||ch==='`'){quote=ch;out+=ch;continue;}if(!/\s/.test(ch))out+=ch;}return out;}
+function includes(haystack,needle,message){assert(haystack.includes(needle)||compactOutsideStrings(haystack).includes(compactOutsideStrings(needle)),message);}
+function excludes(haystack,needle,message){assert(!haystack.includes(needle)&&!compactOutsideStrings(haystack).includes(compactOutsideStrings(needle)),message);}
 
 includes(src,"const HEARTBEAT_INTERVAL = 3000",'RTT sampling interval must be 3 seconds');
 includes(src,"const CONNECT_TIMEOUT_MS = 20000",'slow Cloudflare routes must get a 20 second websocket handshake budget');
@@ -27,6 +29,8 @@ includes(src,"function sendAction(payload,syncPosition=true)",'critical actions 
 includes(src,'function applyAuthoritativePlayers(raw,{acceptSelf=false}={})','authoritative player snapshots must have a single reconciliation path');
 includes(src,'if(acceptSelf||awaitingAuthoritativeSelfPosition)','spawn and reset snapshots must override local prediction');
 includes(src,'seq<=remoteMoveSeq[id]','stale movement packets must be rejected');
+includes(src,'seq<=last&&previous','duplicate movement sequence in full state must not reset remote interpolation');
+includes(worker,'clientSeq<=Number(player.clientMoveSeq||0)','authority must reject stale unordered client position packets');
 includes(src,'map:MAP_PROTOCOL_ID','every room connection must identify the canonical map protocol');
 includes(src,'client:CLIENT_INSTANCE_ID','every room connection must carry a per-instance identity fence');
 includes(src,"nav!=='reload'",'copied tabs must detect an already-live client instance instead of sharing its identity');
@@ -40,10 +44,10 @@ includes(src,"nav==='reload'?2500:0",'fast reloads must briefly wait for the pre
 includes(src,"acquireHeldClientLock(resumeHandoffFrom,2500)",'crash handoff must tolerate a short socket/document teardown race without allowing an unbounded takeover');
 includes(server,'handoff_instance_id','Rust fallback must support explicit reconnect handoff');
 includes(server,'legacy_unbound','Rust fallback must migrate pre-fencing live sessions without breaking reconnect');
-includes(hybrid,'handoff===p.clientInstanceId','Auto P2P authority must allow an explicit stale-instance handoff');
+includes(hybrid,'handoff === p.clientInstanceId','Auto P2P authority must allow an explicit stale-instance handoff');
 includes(src,"code==='session_in_use'",'client must recover from a token already owned by another live instance');
-includes(hybrid,"!(same||legacy||transfer)",'Auto browser-host authority must reject a live unrelated instance while permitting reconnect handoff');
-includes(hybrid,"game.js?v=20260923-rolefeel1",'transport must load the current session-fencing gameplay bundle');
+includes(hybrid,"!(same || legacy || transfer)",'Auto browser-host authority must reject a live unrelated instance while permitting reconnect handoff');
+includes(bootstrap,"'./game.js?v=20261006-playfix1'",'bootstrap must load the current session-fencing gameplay bundle after transport setup');
 includes(src,'directReady:p.directReady===true','Server direct readiness must be represented per player');
 includes(src,'startGameBtn.disabled=count<2||waiting>0','Server matches must wait for every direct transport');
 includes(src,"const POS_SEND_INTERVAL_DIRECT = 20",'direct P2P movement must target about 50 Hz');
@@ -57,8 +61,8 @@ includes(src,"const REMOTE_SMOOTHING_RELAY = 34",'relay smoothing must avoid exc
 includes(src,"function remoteSmoothingRate()",'remote smoothing must adapt to the selected path');
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
-includes(html,'/styles.css?v=20260923-ghostwire1','current UX cache-busted stylesheet must be loaded');
-includes(html,'/hybrid-transport.js?v=20260923-rolefeel1','current transport entry must be loaded');
+includes(html,'/styles.css?v=20261006-playfix1','current UX cache-busted stylesheet must be loaded');
+includes(html,'/bootstrap.js?v=20261006-playfix1','bootstrap must be the page entry point');
 excludes(headers,'immutable','runtime assets must never pin mixed protocol versions');
 includes(headers,'Cache-Control: no-cache, max-age=0, must-revalidate','runtime assets must revalidate');
 includes(html,'maxlength="2"','room input must be two digits');
@@ -76,14 +80,14 @@ includes(src,'function handleGameShortcut(e)','desktop gameplay shortcuts must b
 includes(src,'const PLAYER_VISUAL_RADIUS = 0.56','player sprites must have a readable visual size without changing collision radius');
 includes(src,'function drawObjectiveHint(view,p)','offscreen tasks and urgent repairs must have direction guidance');
 includes(src,"label=pl.id===myPlayerId?'你':shown.name",'the local player label must stay concise in crowded spawns');
-includes(hybrid,"game.js?v=20260923-rolefeel1",'transport must load the current gameplay/performance bundle');
-includes(hybrid,"game-polish.js?v=20260918-archmusic1",'transport must load the current polish bundle');
+includes(bootstrap,"'./game.js?v=20261006-playfix1'",'bootstrap must load the current gameplay/performance bundle');
+includes(bootstrap,"'./game-polish.js?v=20260918-archmusic1'",'bootstrap must load the current polish bundle');
 includes(playerCss,'DTAM UX FLOW 20260829','player shell must include the current lobby layout layer');
 excludes(polish,'stopImmediatePropagation()','typing, shortcuts, and IME input must not be swallowed by a capture guard');
 includes(polish,"u.searchParams.set('room',code)",'copied invite links must carry the room code');
 
 includes(hybrid,"const FAST_OUT=new Set(['pos','ping'])",'P2P position and RTT probes must use the fast channel');
-includes(hybrid,"createDataChannel('dtam-fast',{ordered:false,maxRetransmits:0,priority:'high'})",'fast P2P channel must be unordered, non-retransmitting and high-priority');
+includes(hybrid,"createDataChannel('dtam-fast',{ordered:false,maxRetransmits:0,priority:'high',}",'fast P2P channel must be unordered, non-retransmitting and high-priority');
 includes(hybrid,'JOIN_POLL=900','doorbell fallback polling must not impose multi-second lobby join latency');
 includes(hybrid,'diag.transportRttMs=m.rttMs','guest WebRTC must publish selected candidate-pair RTT');
 includes(hybrid,'diag.relay=m.relay','guest WebRTC must report TURN relay selection accurately');
@@ -118,16 +122,20 @@ includes(worker,"t:'guardian_assigned'",'vote ejection must be able to assign gu
 includes(src,"requestedNameValid=v=>!/\\d$/.test(sanitizeName(v))",'requested nicknames must not end in digits');
 includes(worker,'uniquePlayerName(players,base)','browser authority must allocate duplicate display-name suffixes');
 includes(server,'fn unique_player_name(room: &Room, base: &str)','Rust authority must allocate duplicate display-name suffixes');
-includes(hybrid,"find(x=>x.token===token)",'resume identity must be token-based rather than display-name-based');
+includes(hybrid,"find((x) => x.token === token)",'resume identity must be token-based rather than display-name-based');
 includes(hybrid,"tryServerPrimary()",'Auto transport must probe the independent Server first');
 includes(hybrid,"m?.features?.serverPrimaryV2!==true",'Auto must reject an outdated live Server before adopting it as primary');
-includes(hybrid,"const attached=await attach(this.auth,this.local,this.params);this.open(attached?'browser-host':'p2p-error')",'browser host must attach authority identity before exposing WebSocket open');
-includes(hybrid,"d=>this.opened?this.deliver(d):pending.push(String(d))",'browser host must buffer welcome/state packets until the WebSocket open event');
+includes(hybrid,'await attach(this.auth,this.local,this.params)','browser host must attach authority identity before exposing WebSocket open');
+includes(hybrid,"(d)=>(this.opened?this.deliver(d):pending.push(String(d)))",'browser host must buffer welcome/state packets until the WebSocket open event');
 includes(hybrid,"this.joinSent=true;badge('P2P · 正在建立会话')",'guest must send the attach handshake before exposing WebSocket open');
 includes(hybrid,"if(!this.opened){if(m?.t!=='welcome'&&m?.t!=='error')",'guest must wait for authoritative welcome or error before WebSocket open');
+includes(hybrid,"if(ch.readyState==='open')queueMicrotask(maybe)",'guest must send firstJoin immediately when both channels already opened');
+includes(hybrid,"String(m.mapId||'')!==MAP_PROTOCOL_ID||String(m.room||'')!==this.room||!m.self?.id||!m.self?.token",'guest must validate room identity and welcome before opening');
+includes(hybrid,"this.deliver(text);return this.finish(4400,String(m.code||'join_failed'),true)",'guest rejection must deliver authoritative error without opening a successful socket');
+includes(hybrid,"finish(4406,'invalid_welcome',false)",'invalid first welcome must terminate before open');
 includes(server,'"serverPrimaryV2":true','current Rust authority must advertise the server-primary capability gate');
 includes(worker,'p2pFallbackV2:true','browser authority must advertise current P2P fallback capabilities');
-includes(hybrid,"room_not_found')return abandon('房间不在 Server，转 P2P')",'Server absence of a fallback-created room must fall through to P2P');
+includes(hybrid,"m?.code==='room_not_found')return abandon('房间不在 Server，转 P2P')",'Server absence of a fallback-created room must fall through to P2P');
 includes(hybrid,'startHeartbeat()','P2P fallback authority must maintain a low-rate liveness lease');
 includes(hybrid,'.slice(0,2)','P2P fallback must keep two recovery standbys');
 includes(src,'function bushRegionAt(pos)','client must model bush concealment regions');
@@ -211,7 +219,7 @@ includes(src,"musicControl:ruleMusicControl.value==='host'?'host':'all'",'waitin
 includes(worker,"if(msg.t==='music')",'browser authority must synchronize music state');
 includes(server,'"music" => {','Rust authority must synchronize music state');
 includes(playerCss,'@keyframes dtam-cover-groove','soundtrack cover must animate while playing');
-includes(html,'/signal-budget.js?v=20260919-lowcf1','Pages must load the low-CF join budget policy');
+includes(bootstrap,"'./signal-budget.js?v=20261006-playfix1'",'bootstrap must load the current join budget and recovery policy');
 includes(signalBudget,'const BELL_VISIBLE_MS = 8000','healthy doorbell must reduce D1 join polling to a slow safety net');
 includes(signalBudget,"window.__DTAM_BELL__",'join budget must react to live doorbell health');
 includes(signalWorker,"version:'2.4'",'deployed signalling source must expose the optimized version');

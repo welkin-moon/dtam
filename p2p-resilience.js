@@ -5,7 +5,8 @@ const BaseWebSocket = window.WebSocket;
 const RECOVER_KEY = 'au-dtam-p2p-recovery:';
 const SNAP_KEY = 'au-dtam-p2p-snapshot:';
 const GAMEPLAY_RECONNECT_POLL_MS = 5000;
-const RECOVERY_OFFER_POLL = [120,180,260,380,550,750,1000,1400,2200,3000,2500];
+const RECOVERY_OFFER_POLL = [120,180,260,380,550,750,1000,1400,1800];
+const RECOVERY_OFFER_BUDGET_MS = 8000;
 const NORMAL_OFFER_POLL = [120,180,260,380,550,750,1000,1400,2200,3500,5200,7000];
 // Legacy regression-parser contract. The suite intentionally sums this literal
 // to verify that a normal join outlives hidden-host polling plus ICE gathering:
@@ -33,8 +34,11 @@ function noCandidateReason(side = 'local') {
 }
 
 async function signal(path, options = {}) {
-  const r = await fetch(SIGNAL + path, { cache:'no-store', ...options, headers:{ 'Content-Type':'application/json', ...(options.headers || {}) } });
-  const data = await r.json().catch(() => ({}));
+  const controller = new AbortController();
+  const timeout = Math.max(250, Number(options.timeoutMs || 6000));
+  const timer = setTimeout(() => controller.abort(), timeout);
+  let r, data;
+  try { r = await fetch(SIGNAL + path, { cache:'no-store', ...options, signal:controller.signal, headers:{ 'Content-Type':'application/json', ...(options.headers || {}) } }); data = await r.json().catch(() => ({})); } finally { clearTimeout(timer); }
   if (!r.ok && r.status !== 202) throw Object.assign(new Error(data.message || `signal ${r.status}`), { code:data.code || 'signal_error', data });
   return data;
 }
@@ -68,7 +72,8 @@ function startGameplayWatch(sock) {
     if (sock.closed || !sock.mb || !sock.auth) return;
     try {
       const data = await signal(`/v2/rooms/${sock.room}/joins?hostToken=${encodeURIComponent(sock.mb.hostToken)}`);
-      sock.mb.epoch = Number(data.epoch || sock.mb.epoch);
+      if (sock.closed || sock.mb.destroyed) return;
+      if (Number(data.epoch) !== sock.mb.epoch) { sock.mb.loseAuthority(); return; }
       for (const p of data.peers || []) {
         if (!sock.mb.peers.has(p.peerId)) sock.mb.peer(p.peerId).catch(() => {});
       }
@@ -76,7 +81,7 @@ function startGameplayWatch(sock) {
       // /recover uses an epoch CAS. Once another standby wins, the old host token
       // becomes invalid. Treat that 403 as a fencing signal and immediately
       // demote the stale authority so split-brain is bounded by one watch period.
-      if (e?.code === 'forbidden') {
+      if (['forbidden','room_not_found'].includes(e?.code)) {
         stopGameplayWatch(sock);
         diag({ authoritySuperseded:true, recovering:true, lastError:'authority epoch superseded' });
         badge('房主已迁移 · 正在重连', '检测到更高 authority epoch，旧房主已主动让位');
@@ -99,14 +104,15 @@ async function inspectPc(pc) {
   if (!pc?.getStats) return;
   try {
     const stats = await pc.getStats();
-    let pair = null;
-    stats.forEach(x => { if (x.type === 'candidate-pair' && x.state === 'succeeded' && (x.nominated || !pair)) pair = x; });
+    let pair = null, selectedId = '';
+    stats.forEach(x => { if (x.type === 'transport' && x.selectedCandidatePairId) selectedId = x.selectedCandidatePairId; if (x.type === 'candidate-pair' && x.state === 'succeeded' && (x.selected || x.nominated)) pair = x; });
+    pair = stats.get(selectedId) || pair;
     if (!pair) return;
     const local = stats.get(pair.localCandidateId), remote = stats.get(pair.remoteCandidateId);
     const relay = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
     const detail = [local?.candidateType && remote?.candidateType ? `${local.candidateType} ↔ ${remote.candidateType}` : '', local?.protocol || ''].filter(Boolean).join(' · ');
     diag({ relay, pair:detail || (relay ? 'TURN relay' : 'WebRTC direct') });
-    badge(relay ? 'Cloudflare 中继' : 'P2P 直连', detail || (relay ? 'TURN relay' : 'WebRTC direct'));
+    badge(relay ? 'TURN 中继' : 'P2P 直连', detail || (relay ? 'TURN relay' : 'WebRTC direct'));
   } catch (_) {}
 }
 
@@ -116,10 +122,14 @@ function patchSocket(sock) {
 
   sock.start = async function resilientStart() {
     if (typeof this.host !== 'function' || typeof this.guest !== 'function') return;
-    if (this.create) return this.host();
+    if (this.closed) return;
     const rec = loadJson(localStorage, RECOVER_KEY + this.room);
+    const resumingP2p = !!this.params?.get('token') && !!rec;
+    if (this.cfg?.mode === 'auto' && !resumingP2p && await this.tryServerPrimary()) return;
+    if (this.closed) return;
+    if (this.create) return this.host();
     const snapshot = loadJson(sessionStorage, SNAP_KEY + this.room);
-    this.__dtamRecoveryCandidate = rec && snapshot ? { rec, snapshot } : null;
+    this.__dtamRecoveryCandidate = rec && snapshot && Number(snapshot.authorityEpoch || rec.epoch) === Number(rec.epoch) ? { rec, snapshot } : null;
     return this.guest(rec || null);
   };
 
@@ -135,7 +145,15 @@ function patchSocket(sock) {
       });
       joinToken = String(joined.joinToken || '');
       diag({ joinStage:'waiting-offer', joinStageAt:Date.now() });
-      if (rec) saveRecovery(this.room, { ...rec, epoch:Number(joined.epoch || rec.epoch || 1) });
+      if (rec) {
+        const nextEpoch = Number(joined.epoch || rec.epoch || 1);
+        saveRecovery(this.room, { ...rec, epoch:nextEpoch });
+        if (nextEpoch !== Number(rec.epoch)) {
+          this.__dtamRecoveryCandidate = null;
+          try { sessionStorage.removeItem(SNAP_KEY + this.room); } catch (_) {}
+          diag({ recoveryStage:'rejoining-new-authority', epoch:nextEpoch });
+        }
+      }
     } catch (e) {
       diag({ joinStage:'admission-failed', joinStageError:String(e?.message || e) });
       if (['room_not_found','game_in_progress'].includes(e.code) && this.cfg?.mode === 'p2p') {
@@ -151,11 +169,15 @@ function patchSocket(sock) {
     // connect budget to perform an epoch-CAS recovery. A fresh join has no such
     // fallback and therefore keeps the longer offer window.
     const offerPoll = this.__dtamRecoveryCandidate ? RECOVERY_OFFER_POLL : NORMAL_OFFER_POLL;
+    const offerDeadline = Date.now() + (this.__dtamRecoveryCandidate ? RECOVERY_OFFER_BUDGET_MS : 24000);
     for (const delay of offerPoll) {
-      await sleep(delay);
+      const remaining = offerDeadline - Date.now();
+      if (remaining <= 0) break;
+      await sleep(Math.min(delay, remaining));
       if (this.closed) return;
       try {
-        const data = await signal(`/v2/rooms/${this.room}/offers/${peerId}?joinToken=${encodeURIComponent(joinToken)}`);
+        if (Date.now() >= offerDeadline) break;
+        const data = await signal(`/v2/rooms/${this.room}/offers/${peerId}?joinToken=${encodeURIComponent(joinToken)}`, {timeoutMs:Math.min(6000, Math.max(250, offerDeadline-Date.now()))});
         if (data.ready) { offer = data.offer; break; }
       } catch (e) {
         if (e.code === 'peer_not_found') return this.fallback('加入请求已过期');
@@ -169,6 +191,7 @@ function patchSocket(sock) {
     const pc = this.pc = new RTCPeerConnection({
       iceServers:[{ urls:'stun:stun.cloudflare.com:3478' }],
       bundlePolicy:'max-bundle',
+      dtamGameplay:true,
       iceCandidatePoolSize:4,
     });
     pc.ondatachannel = e => this.bind(e.channel);
@@ -201,7 +224,7 @@ function patchSocket(sock) {
         method:'POST',
         body:JSON.stringify({ joinToken, answer:localDescription }),
       });
-      diag({ joinStage:'waiting-datachannel', joinStageAt:Date.now() });
+      if (!this.opened) diag({ joinStage:'waiting-datachannel', joinStageAt:Date.now() });
     } catch (e) {
       diag({ joinStage:`${stage}-failed`, joinStageError:String(e?.message || e), joinStageAt:Date.now() });
       return this.fallback(`连接协商失败（${stage}）`);
@@ -262,7 +285,7 @@ function patchSocket(sock) {
   const originalOpen = sock.open.bind(sock);
   sock.open = function resilientOpen(mode) {
     const out = originalOpen(mode);
-    diag({ joinStage:'socket-open', joinStageAt:Date.now() });
+    if (this.opened && !this.closed) diag({ joinStage:'socket-open', joinStageAt:Date.now(), lastError:'', recovering:false, recoveryStage:mode === 'p2p-recovered-host' ? 'authority-open' : '', joinStageError:'' });
     setTimeout(() => {
       if (this.pc?.connectionState === 'connected') inspectPc(this.pc);
       if (this.mb?.peers) for (const p of this.mb.peers.values()) if (p.pc?.connectionState === 'connected') inspectPc(p.pc);
@@ -281,7 +304,7 @@ function patchSocket(sock) {
     const room = this.room;
     const hostToken = this.mb?.hostToken || window.__DTAM_HOST_SIGNAL__?.hostToken || '';
     const connected = this.auth?.room ? Object.values(this.auth.room.players || {}).filter(p => p.connected).length : 0;
-    if (this.auth && hostToken && connected <= 1) {
+    if (this.auth && hostToken && this.explicitLeave && connected <= 1) {
       fetch(`${SIGNAL}/v2/rooms/${room}?hostToken=${encodeURIComponent(hostToken)}`, { method:'DELETE', keepalive:true, cache:'no-store' }).catch(() => {});
       try { localStorage.removeItem(RECOVER_KEY + room); sessionStorage.removeItem(SNAP_KEY + room); } catch (_) {}
     }
@@ -302,4 +325,4 @@ for (const key of ['CONNECTING','OPEN','CLOSING','CLOSED']) {
   try { Object.defineProperty(WrappedWebSocket, key, { value:BaseWebSocket[key] }); } catch (_) {}
 }
 window.WebSocket = WrappedWebSocket;
-diag({ resilience:'fast-join+fenced-host-migration', serverPolicy:getNetworkConfig().mode === 'server' ? 'manual-server' : 'p2p-only' });
+diag({ resilience:'fast-join+fenced-host-migration', serverPolicy:getNetworkConfig().mode === 'server' ? 'manual-server' : getNetworkConfig().mode === 'auto' ? 'server-first-p2p-fallback' : 'p2p-only' });

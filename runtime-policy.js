@@ -88,10 +88,12 @@ async function samplePeerConnections() {
     if (!['connected','completed'].includes(String(pc.connectionState)) && String(pc.iceConnectionState) !== 'connected' && String(pc.iceConnectionState) !== 'completed') continue;
     try {
       const stats = await pc.getStats();
-      let pair = null;
+      let pair = null, selectedId = '';
       stats.forEach(row => {
-        if (row.type === 'candidate-pair' && row.state === 'succeeded' && (row.nominated || !pair)) pair = row;
+        if (row.type === 'transport' && row.selectedCandidatePairId) selectedId = row.selectedCandidatePairId;
+        if (row.type === 'candidate-pair' && row.state === 'succeeded' && (row.selected || row.nominated)) pair = row;
       });
+      pair = stats.get(selectedId) || pair;
       if (!pair) continue;
       const local = stats.get(pair.localCandidateId), remote = stats.get(pair.remoteCandidateId);
       const rttMs = Number.isFinite(Number(pair.currentRoundTripTime)) ? Number(pair.currentRoundTripTime) * 1000 : NaN;
@@ -127,6 +129,7 @@ async function samplePeerConnections() {
       transportRttMs:worstRtt,
       peerRttMs:worstRtt,
       relay,
+      activeChannel:relay ? 'TURN 中继' : 'Direct WebRTC',
       pair:`${representative.localType} ↔ ${representative.remoteType} · ${representative.protocol.toLowerCase()}`,
       route,
       transportPaths:paths,
@@ -190,8 +193,8 @@ if (typeof NativePC === 'function') {
       }
       const pool = Number.isInteger(config?.iceCandidatePoolSize) ? config.iceCandidatePoolSize : 4;
       super({ ...config, iceServers, iceCandidatePoolSize:pool });
-      trackedPcs.add(this);
-      this.addEventListener('datachannel', event => tuneDataChannel(event.channel));
+      if(config.dtamGameplay===true)trackedPcs.add(this);
+      this.addEventListener('datachannel', event => {if(['dtam-control','dtam-fast'].includes(event.channel?.label))trackedPcs.add(this);tuneDataChannel(event.channel);});
       this.addEventListener('connectionstatechange', () => {
         if (this.connectionState === 'closed') trackedPcs.delete(this);
       });
@@ -204,6 +207,7 @@ if (typeof NativePC === 'function') {
       } else if (label === 'dtam-control') {
         next = { ...next, priority:'high' };
       }
+      if(['dtam-control','dtam-fast'].includes(label))trackedPcs.add(this);
       return tuneDataChannel(super.createDataChannel(label, next));
     }
   }

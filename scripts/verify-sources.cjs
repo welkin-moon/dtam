@@ -72,6 +72,7 @@ if (mode === 'classic' || mode === 'all') {
 
 if (mode === 'modules' || mode === 'all') {
   const esModules = [
+    'bootstrap.js',
     'p2p-entry.js',
     'p2p-trystero.js',
     'p2p-cf-mailbox.js',

@@ -401,3 +401,24 @@ html:not(.dtam-debug) #networkDiagBtn {
   #musicPlayer { width: min(216px, 62vw); }
   .music-copy span { display: none; }
 }
+
+/* Keep all controls reachable at phone widths without squeezing two HUD rows
+   into one. Pointer capture owns the movement finger across multi-touch. */
+#joystick { touch-action: none; }
+@media (max-width: 560px) {
+  #hud { grid-template-columns: minmax(0,1fr) !important; }
+  .hud-left, .hud-right { width:100%; }
+  .hud-right { justify-content:flex-end !important; }
+  #hudMoreMenu { max-width:calc(100vw - 20px); }
+  #chatPanel, #playerPanel { top:82px !important; max-height:calc(100dvh - 94px) !important; }
+  #game:has(#lobbyPanel.show) #lobbyPanel.show { top:82px !important; }
+  #musicPlayer { top:84px; width:min(276px,calc(100vw - 20px)); }
+  #gameMeta, #chatStream { top:146px !important; }
+  #game:has(#lobbyPanel.show) #musicPlayer { bottom:10px; top:auto; }
+}
+/* The persistent minimap sits below both phone HUD rows and the music strip.
+   Keep it below the HUD stacking layer so menus stay clickable. */
+#dtamMiniHud { z-index:19 !important; }
+@media (max-width:560px) {
+  #dtamMiniHud { top:calc(max(8px,env(safe-area-inset-top)) + 138px) !important; }
+}

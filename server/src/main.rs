@@ -398,6 +398,8 @@ struct Player {
     #[serde(default)]
     move_seq: u64,
     #[serde(skip)]
+    client_move_seq: u64,
+    #[serde(skip)]
     direct_ready: bool,
     #[serde(skip)]
     transport_generation: u64,
@@ -2898,6 +2900,14 @@ fn process_message(rt: &mut RoomRuntime, player_id: &str, conn_id: &str, text: &
             if rt.room.phase != "playing" || p0.in_vent {
                 return true;
             }
+            if let Some(seq) = msg.get("clientSeq").and_then(Value::as_u64) {
+                if seq == 0 || seq <= p0.client_move_seq || seq > 9_007_199_254_740_991 {
+                    return true;
+                }
+                if let Some(p) = rt.room.players.get_mut(player_id) {
+                    p.client_move_seq = seq;
+                }
+            }
             let Some(x) = msg.get("x").and_then(Value::as_f64) else {
                 return true;
             };
@@ -3587,6 +3597,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
                 avatar: String::new(),
                 pos: spawn(rt.room.players.len()),
                 move_seq: 0,
+                client_move_seq: 0,
                 direct_ready: false,
                 transport_generation: 0,
                 connected: true,
@@ -3643,6 +3654,7 @@ async fn handle_socket(mut socket: WebSocket, q: WsQuery, state: AppState, clien
         p.direct_ready = false;
         p.transport_generation = 0;
         p.connection_id = connection_id.clone();
+        p.client_move_seq = 0;
         p.last_seen = now;
         rt.room.players.insert(p.id.clone(), p.clone());
         if !rt

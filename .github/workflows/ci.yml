@@ -35,6 +35,8 @@ jobs:
           cp worker.js /tmp/dtam-worker.mjs
           node --check /tmp/dtam-worker.mjs
           node scripts/test.cjs
+          node scripts/test-p2p-runtime.cjs
+          node scripts/verify-sources.cjs
       - name: Update stable Rust toolchain
         shell: bash
         run: |

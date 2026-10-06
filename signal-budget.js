@@ -50,7 +50,8 @@ window.fetch = async function budgetedFetch(input, init = {}) {
     return NativeFetch(input, init);
   }
 
-  const key = pollUrl.pathname;
+  // A new authority must never reuse the old host credential's synthetic epoch.
+  const key = pollUrl.pathname + ':' + String(pollUrl.searchParams.get('hostToken') || '');
   const room = (pollUrl.pathname.match(/^\/v2\/rooms\/(\d{2})\/joins$/) || [])[1] || '';
   const state = states.get(key) || { nextAt: 0, emptyStreak: 0, epoch: 1, roomState: 'lobby', bellPrimary: false };
   const now = Date.now();
@@ -72,6 +73,7 @@ window.fetch = async function budgetedFetch(input, init = {}) {
   stats.networkRequests++;
   stats.lastPollAt = now;
   const response = await NativeFetch(input, init);
+  if (!response.ok) { states.delete(key); return response; }
   try {
     const data = await response.clone().json();
     const peers = Array.isArray(data.peers) ? data.peers : [];
