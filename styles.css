@@ -1604,7 +1604,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .sabotage-grid button span { font-size: 12px; color: var(--muted); }
 
 #ventChoices { display: grid; gap: 8px; margin: 12px 0; }
-#ventChoices button, #ventExitBtn, #backLobbyBtn, #taskHoldBtn, #taskCancelBtn {
+#ventChoices button, #ventExitBtn, #backLobbyBtn, #endLeaveBtn, #taskHoldBtn, #taskCancelBtn {
   width: 100%;
   min-height: 44px;
   border: 1px solid var(--border);
@@ -1619,6 +1619,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   color: var(--accent-text);
   border-color: var(--accent);
 }
+
+#endLeaveBtn { margin-top: 10px; }
 
 #taskHoldBtn {
   touch-action: none;
@@ -2905,5 +2907,4 @@ html[data-direct-reconnecting] #game::after {
   from { transform: scale(1); }
   to { transform: scale(1.15); }
 }
-
 
