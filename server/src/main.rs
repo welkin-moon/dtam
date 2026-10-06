@@ -1286,7 +1286,13 @@ fn check_win(rt: &mut RoomRuntime, source: &str) -> bool {
     let imps = alive.iter().filter(|p| is_impostor(&p.role)).count();
     let crew = alive.iter().filter(|p| is_crew(&p.role)).count();
     let (done, total) = task_progress(&rt.room);
-    if rt.room.players.values().any(|p| is_impostor(&p.role)) && imps == 0 {
+    let settings = &rt.room.settings;
+    let had_impostors = rt.room.players.values().any(|p| is_impostor(&p.role))
+        || settings.normal_impostors > 0
+        || settings.shapeshifters > 0
+        || settings.phantoms > 0
+        || settings.vipers > 0;
+    if had_impostors && imps == 0 {
         return end_game(rt, "crewmate", "所有内鬼都已被淘汰");
     }
     if total > 0 && done >= total {

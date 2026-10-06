@@ -105,5 +105,26 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  assert(!p1.connected&&p1.connectionId===''&&p1.activeTask===null,'gone must disconnect a player and release its active task even when the socket was already closed');
  assert(goneRoom.meeting.eligibleVoters===1,'gone must recompute voting eligibility after an already-closed socket disconnects');
  goneAuth.shutdown();
- console.log('[p2p runtime] ok: production chunk bounds/reassembly, queue order/cleanup/overflow, unordered movement, meeting/ghost chat routing, and closed-socket gone cleanup');
+ function leaveFixture(entries,counts){
+  const testRoom=Object.create(GameRoom.prototype),gameOver={};
+  const people=entries.map(([id,role],i)=>({id,name:id,role,ghostRole:'',connected:true,connectionId:`leave-${id}`,alive:true,joinedAt:i+1,lastSeen:Date.now(),tasks:[],completed:[],fakeTasks:[],pos:{x:75.5,y:75.5},inVent:false,ventId:''}));
+  testRoom.phase='playing';testRoom.winner='';testRoom.reason='';testRoom.players=Object.fromEntries(people.map(p=>[p.id,p]));testRoom.hostId=people[0]?.id||'';testRoom.settings={normalImpostors:counts.normalImpostors,shapeshifters:counts.shapeshifters||0,phantoms:counts.phantoms||0,vipers:counts.vipers||0,taskbarMode:'always'};testRoom.bodies=[];testRoom.meeting=null;testRoom.sabotage=null;testRoom.doorLockUntil=0;testRoom.taskbarDone=0;testRoom.persistNow=async()=>{};testRoom.scheduleNextAlarm=async()=>{};testRoom.broadcast=()=>{};testRoom.broadcastState=()=>{};testRoom.sendTo=(id,payload)=>{(gameOver[id]??=[]).push(payload);};
+  const sockets=Object.fromEntries(people.map(p=>[p.id,{deserializeAttachment:()=>({playerId:p.id,connectionId:p.connectionId}),close(){}}]));
+  return{room:testRoom,people,sockets,gameOver};
+ }
+ async function leaveThroughProductionHandler(fixture,id){const p=fixture.room.players[id],ws=fixture.sockets[id];await fixture.room.webSocketMessage(ws,JSON.stringify({t:'leave'}));return p;}
+ const soleImpLeave=leaveFixture([['host-crew','scientist'],['sole-imp','impostor'],['crew-a','engineer'],['crew-b','crewmate']],{normalImpostors:1});
+ await leaveThroughProductionHandler(soleImpLeave,'sole-imp');
+ assert(!soleImpLeave.room.players['sole-imp']&&soleImpLeave.room.phase==='ended'&&soleImpLeave.room.winner==='crewmate','real leave packet removes the only impostor and ends for crew using the fixed round role count');
+ assert(['host-crew','crew-a','crew-b'].every(id=>soleImpLeave.gameOver[id]?.some(m=>m.t==='game_over'&&m.winner==='crewmate')),'unique-impostor departure sends the crew victory through production endGame to remaining players');
+ const twoImpLeave=leaveFixture([['host-crew','scientist'],['imp-one','impostor'],['imp-two','shapeshifter'],['crew-a','engineer'],['crew-b','crewmate'],['crew-c','crewmate']],{normalImpostors:1,shapeshifters:1});
+ await leaveThroughProductionHandler(twoImpLeave,'imp-one');
+ assert(!twoImpLeave.room.players['imp-one']&&twoImpLeave.room.phase==='playing'&&!twoImpLeave.room.winner,'real leave packet with another impostor and at least three crew remaining does not falsely award crew victory');
+ const noImpLeave=leaveFixture([['host-a','crewmate'],['crew-b','engineer'],['crew-c','scientist']],{normalImpostors:0});
+ await leaveThroughProductionHandler(noImpLeave,'crew-b');
+ assert(!noImpLeave.room.players['crew-b']&&noImpLeave.room.phase==='playing'&&!noImpLeave.room.winner,'real leave packet in a zero-impostor task round leaves the remaining crew playing');
+ const expiredImp=leaveFixture([['crew-a','scientist'],['last-imp','impostor'],['crew-b','crewmate']],{normalImpostors:1});expiredImp.room.players['last-imp'].connected=false;expiredImp.room.players['last-imp'].connectionId='';expiredImp.room.players['last-imp'].lastSeen=1;expiredImp.room.electHost=GameRoom.prototype.electHost;
+ await expiredImp.room.alarm();
+ assert(!expiredImp.room.players['last-imp']&&expiredImp.room.phase==='ended'&&expiredImp.room.winner==='crewmate','alarm cleanup of the last disconnected impostor also runs real leave-source win resolution');
+ console.log('[p2p runtime] ok: production chunk transport, bounded queue, unordered movement, chat routing, socket cleanup, and real GameRoom leave/win paths');
 })().catch(error=>{console.error(error);process.exitCode=1});

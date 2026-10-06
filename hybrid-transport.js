@@ -1,4 +1,4 @@
-import { GameRoom } from './worker.js?v=20261006-playfix2';
+import { GameRoom } from './worker.js?v=20261006-playfix6';
 import {
   getNetworkConfig,
   serverTargetFor,
