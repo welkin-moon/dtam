@@ -27,24 +27,24 @@
     <link rel="stylesheet" href="/player-shell.css?v=20261006-playfix2" />
 </head>
 <body>
-    <div id="menu">
-        <button type="button" class="theme-toggle" id="menuThemeBtn" aria-label="切换主题" title="切换深色/浅色主题">深色</button>
-        <button type="button" class="theme-toggle" id="menuSettingsBtn" aria-label="游戏设置" title="设置音效与主题" style="right: max(84px, calc(env(safe-area-inset-right) + 68px));">⚙ 设置</button>
+    <div id="menu" aria-busy="true">
+        <button type="button" class="theme-toggle" id="menuThemeBtn" data-dtam-boot-control disabled aria-label="切换主题" title="切换深色/浅色主题">深色</button>
+        <button type="button" class="theme-toggle" id="menuSettingsBtn" data-dtam-boot-control disabled aria-label="游戏设置" title="设置音效与主题" style="right: max(84px, calc(env(safe-area-inset-right) + 68px));">⚙ 设置</button>
         <main class="menu-content">
             <header class="menu-brand"><h1 class="logo">Among Us <span>东滩版</span></h1><p class="sub">在线对局 · 自动连接</p></header>
             <div class="card">
-                <div class="field"><label for="playerNameInput">昵称</label><input type="text" id="playerNameInput" placeholder="输入昵称" maxlength="12" value="玩家" autocomplete="nickname" /></div>
+                <div class="field"><label for="playerNameInput">昵称</label><input type="text" id="playerNameInput" data-dtam-boot-control disabled placeholder="输入昵称" maxlength="12" value="玩家" autocomplete="nickname" /></div>
                 <div class="profile-picker">
                     <div id="avatarPreview" class="avatar-preview" aria-label="头像预览">头像</div>
                     <div class="profile-picker-actions">
-                        <input type="file" id="avatarInput" accept="image/*" hidden />
-                        <div><button type="button" class="btn btn-outline profile-btn" id="avatarChooseBtn">上传头像</button><button type="button" class="btn btn-outline profile-btn" id="avatarClearBtn">清除</button></div>
+                        <input type="file" id="avatarInput" data-dtam-boot-control disabled accept="image/*" hidden />
+                        <div><button type="button" class="btn btn-outline profile-btn" id="avatarChooseBtn" data-dtam-boot-control disabled>上传头像</button><button type="button" class="btn btn-outline profile-btn" id="avatarClearBtn" data-dtam-boot-control disabled>清除</button></div>
                         <small>系统会自动选择可用的联机和语音线路。</small>
                     </div>
                 </div>
-                <div class="row-buttons"><button type="button" class="btn btn-primary" id="createRoomBtn">创建房间</button><button type="button" class="btn btn-outline" id="showJoinBtn">加入房间</button></div>
-                <div class="field" id="joinSection" style="display:none; margin-top:12px;"><label for="roomIdInput">房间号</label><div class="join-row"><input type="text" id="roomIdInput" placeholder="2 位数字" maxlength="2" inputmode="numeric" pattern="[0-9]{2}" autocomplete="off" /><button type="button" class="btn btn-primary" id="joinRoomBtn">加入</button></div></div>
-                <div id="menuStatus" aria-live="polite">输入昵称，然后创建或加入房间</div>
+                <div class="row-buttons"><button type="button" class="btn btn-primary" id="createRoomBtn" data-dtam-boot-control disabled>创建房间</button><button type="button" class="btn btn-outline" id="showJoinBtn" data-dtam-boot-control disabled>加入房间</button></div>
+                <div class="field" id="joinSection" style="display:none; margin-top:12px;"><label for="roomIdInput">房间号</label><div class="join-row"><input type="text" id="roomIdInput" data-dtam-boot-control disabled placeholder="2 位数字" maxlength="2" inputmode="numeric" pattern="[0-9]{2}" autocomplete="off" /><button type="button" class="btn btn-primary" id="joinRoomBtn" data-dtam-boot-control disabled>加入</button></div></div>
+                <div id="menuStatus" aria-live="polite">正在加载游戏，请稍候…</div>
             </div>
         </main>
     </div>
@@ -64,6 +64,6 @@
         <div id="gameToast" aria-live="polite"></div>
     </div>
     <!-- build: 20261006-playfix2 -->
-    <script type="module" src="/bootstrap.js?v=20261006-playfix2"></script>
+    <script type="module" src="/bootstrap.js?v=20261006-playfix3"></script>
 </body>
 </html>

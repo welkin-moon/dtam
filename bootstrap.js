@@ -12,7 +12,7 @@ const modules = [
   './p2p-resilience.js?v=20261006-playfix2',
   './p2p-doorbell-host.js?v=20260908-v301net2',
   './p2p-stability-guard.js?v=20260830-stability1',
-  './game.js?v=20261006-playfix2',
+  './game.js?v=20261006-playfix3',
   './game-polish.js?v=20260918-archmusic1',
   './minimap-hud.js?v=20260908-v301perf1',
   './minimap-hud-refresh.js?v=20260830-minimap2',
@@ -21,6 +21,8 @@ const modules = [
 try {
   for (const module of modules) await import(module);
   window.__DTAM_BOOT_READY__ = true;
+  for (const control of document.querySelectorAll('[data-dtam-boot-control]')) control.disabled = false;
+  document.getElementById('menu')?.setAttribute('aria-busy', 'false');
 } catch (error) {
   console.error('[DTAM startup]', error);
   const status = document.getElementById('menuStatus');
@@ -28,8 +30,6 @@ try {
     status.textContent = '游戏加载失败，请刷新页面重试';
     status.className = 'error';
   }
-  for (const id of ['createRoomBtn', 'joinRoomBtn']) {
-    const button = document.getElementById(id);
-    if (button) button.disabled = true;
-  }
+  for (const control of document.querySelectorAll('[data-dtam-boot-control]')) control.disabled = true;
+  document.getElementById('menu')?.setAttribute('aria-busy', 'false');
 }
