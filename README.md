@@ -138,6 +138,7 @@ node --check minimap-hud.js
 node --check minimap-hud-late.js
 node scripts/test.cjs
 node scripts/test-p2p-runtime.cjs
+node scripts/test-authority-routing.cjs
 node scripts/test-roles.cjs
 node scripts/verify-sources.cjs
 ```

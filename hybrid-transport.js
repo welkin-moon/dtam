@@ -14,7 +14,7 @@ if (bootConfig.mode === 'server') {
 const NativeWebSocket = window.__DTAM_NATIVE_WEBSOCKET__ || window.WebSocket,
   NativeRTCPeerConnection = window.RTCPeerConnection,
   SIGNAL = 'https://p2p-signal.lunarlab.uk',
-  VER = 'hybrid-0.6.3-playfix',
+  VER = 'hybrid-0.6.4-playfix',
   MAP_PROTOCOL_ID = 'dtam-map-150-v1';
 const FAST_OUT = new Set(['pos', 'ping']),
   FAST_IN = new Set(['pos', 'pong']),
@@ -1110,6 +1110,7 @@ class HybridSocket extends EventTarget {
     this.opened = false;
     this.closed = false;
     this.serverTried = false;
+    this.p2pPinned = false;
     this.lastPos = '';
     this.explicitLeave = false;
     this.statsTimer = null;
@@ -1184,10 +1185,38 @@ class HybridSocket extends EventTarget {
     this.mb?.destroy();
     this.emit('close', ce(code, reason, clean));
   }
+  async preferP2pRoom() {
+    if (this.p2pPinned) return true;
+    try {
+      const { data } = await api(`/v2/rooms/${this.room}/info`, {
+        signal: AbortSignal.timeout(4000),
+      });
+      if (data.ok !== true || !/^[a-f0-9]{16,64}$/i.test(String(data.hostId || '')) ||
+          !Number.isInteger(Number(data.epoch)) || Number(data.epoch) < 1)
+        throw new Error('Invalid room authority response');
+      this.p2pPinned = true;
+      return true;
+    } catch (error) {
+      if (error.status === 404 && error.code === 'room_not_found') return false;
+      throw error;
+    }
+  }
   async tryServerPrimary() {
     if (this.cfg.mode !== 'auto' || this.closed) return false;
     this.serverTried = true;
     diag.lastError = '';
+    // A timed-out Server create can still leave a room behind there. The
+    // signal claim is authoritative for browser-host rooms: never adopt an
+    // unrelated Server room merely because it has the same two-digit code.
+    try {
+      if (await this.preferP2pRoom()) return false;
+    } catch (_) {
+      diag.lastError = '无法确认房间联机方式，请重试';
+      qualityChanged();
+      this.finish(1006, diag.lastError, false);
+      return false;
+    }
+    if (this.closed) return false;
     badge(
       'Auto · 检测 Server',
       '优先使用独立 Server；房间不在 Server 时继续 P2P',
@@ -1203,7 +1232,8 @@ class HybridSocket extends EventTarget {
     this.native = ws;
     return await new Promise((resolve) => {
       let settled = false,
-        opened = false;
+        opened = false,
+        checkingAuthority = false;
       const abandon = (reason) => {
           if (settled) return;
           settled = true;
@@ -1239,7 +1269,8 @@ class HybridSocket extends EventTarget {
       ws.onopen = () => {
         opened = true;
       };
-      ws.onmessage = (e) => {
+      ws.onmessage = async (e) => {
+        if (settled) return;
         let m = null;
         try {
           m = JSON.parse(String(e.data || ''));
@@ -1262,7 +1293,20 @@ class HybridSocket extends EventTarget {
           !m.self?.token
         )
           return abandon('Server 身份响应无效');
-        adopt(String(e.data || ''));
+        if (checkingAuthority) return;
+        checkingAuthority = true;
+        // Recheck after the Server handshake: a browser-host claim can have
+        // appeared while the probe was in flight. Ignore late responses.
+        try {
+          if (await this.preferP2pRoom())
+            return abandon('房间由 P2P 房主管理');
+        } catch (_) {
+          if (settled || this.closed) return;
+          abandon('无法确认房间联机方式，请重试');
+          this.finish(1006, '无法确认房间联机方式，请重试', false);
+          return;
+        }
+        if (!settled && !this.closed) adopt(String(e.data || ''));
       };
       ws.onerror = () => abandon('Server 建链失败');
       ws.onclose = () => abandon('Server 不可用');
@@ -1679,7 +1723,7 @@ class HybridSocket extends EventTarget {
   }
   fallback(reason) {
     if (this.closed || this.native || this.opened) return;
-    if (this.cfg.mode === 'p2p' || this.serverTried) {
+    if (this.cfg.mode === 'p2p' || this.serverTried || this.p2pPinned) {
       diag.lastError = reason;
       qualityChanged();
       this.emit('error', new Event('error'));

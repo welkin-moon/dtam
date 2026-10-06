@@ -62,7 +62,8 @@ includes(src,"function remoteSmoothingRate()",'remote smoothing must adapt to th
 excludes(headers,'microphone=()','Pages headers must not disable microphone');
 includes(headers,'microphone=(self)','same-origin microphone permission must be allowed');
 includes(html,'/styles.css?v=20261006-playfix2','current UX cache-busted stylesheet must be loaded');
-includes(html,'/bootstrap.js?v=20261006-playfix3','bootstrap must be the page entry point');
+includes(html,'/bootstrap.js?v=20261006-playfix4','bootstrap must be the page entry point');
+includes(bootstrap,"'./hybrid-transport.js?v=20261006-playfix4'",'bootstrap must load the authority-routing transport version');
 excludes(headers,'immutable','runtime assets must never pin mixed protocol versions');
 includes(headers,'Cache-Control: no-cache, max-age=0, must-revalidate','runtime assets must revalidate');
 includes(html,'maxlength="2"','room input must be two digits');
