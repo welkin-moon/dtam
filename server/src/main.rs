@@ -562,10 +562,17 @@ impl Room {
             p.connected = false;
             p.connection_id.clear();
             p.active_task = None;
-            p.ability_until = 0;
-            p.disguise_target_id.clear();
-            p.hidden_until = 0;
-            p.vent_exit_at = 0;
+            // Absolute role deadlines survive authority restart. Legacy engineer
+            // snapshots without a deadline are ejected on the next tick.
+            p.vent_exit_at = if p.role == "engineer" && p.in_vent {
+                if p.vent_exit_at > 0 {
+                    p.vent_exit_at
+                } else {
+                    now_ms()
+                }
+            } else {
+                0
+            };
             p.poisoned_by.clear();
             p.poison_ends_at = 0;
             p.voice_session_id.clear();
@@ -1159,7 +1166,7 @@ fn visible_task_progress(room: &Room) -> (usize, usize) {
     (0, total)
 }
 fn self_state(room: &Room, p: &Player) -> Value {
-    json!({"role":p.role,"roleLabel":role_label(&p.role),"ghostRole":p.ghost_role,"alive":p.alive,"tasks":p.tasks,"completed":p.completed,"fakeTasks":p.fake_tasks,"allies":if is_impostor(&p.role){room.players.values().filter(|x|x.id!=p.id&&is_impostor(&x.role)).map(|x|Value::String(x.id.clone())).collect::<Vec<_>>()}else{vec![]},"killReadyAt":p.kill_ready_at,"abilityReadyAt":p.ability_ready_at,"abilityUntil":p.ability_until,"trackedId":p.tracked_id,"trackUntil":p.track_until,"ventReadyAt":p.vent_ready_at,"ventExitAt":p.vent_exit_at,"protectedUntil":p.protected_until,"sabotageReadyAt":if is_impostor(&p.role){room.sabotage_ready_at}else{0},"emergencyUsed":p.emergency_used,"inVent":p.in_vent,"ventId":p.vent_id})
+    json!({"role":p.role,"roleLabel":role_label(&p.role),"ghostRole":p.ghost_role,"alive":p.alive,"tasks":p.tasks,"completed":p.completed,"fakeTasks":p.fake_tasks,"protectableIds":if p.ghost_role == "guardian" && !p.alive {Some(room.players.values().filter(|x|x.id!=p.id && x.connected && x.alive && is_crew(&x.role)).map(|x|x.id.clone()).collect::<Vec<_>>())} else {None},"allies":if is_impostor(&p.role){room.players.values().filter(|x|x.id!=p.id&&is_impostor(&x.role)).map(|x|Value::String(x.id.clone())).collect::<Vec<_>>()}else{vec![]},"killReadyAt":p.kill_ready_at,"abilityReadyAt":p.ability_ready_at,"abilityUntil":p.ability_until,"trackedId":p.tracked_id,"trackUntil":p.track_until,"ventReadyAt":p.vent_ready_at,"ventExitAt":p.vent_exit_at,"protectedUntil":p.protected_until,"sabotageReadyAt":if is_impostor(&p.role){room.sabotage_ready_at}else{0},"emergencyUsed":p.emergency_used,"inVent":p.in_vent,"ventId":p.vent_id})
 }
 fn public_meeting(m: &Meeting, my_id: &str) -> Value {
     let mut result = if m.stage == "result" {
@@ -1927,6 +1934,7 @@ fn use_ability(rt: &mut RoomRuntime, player_id: &str, target_id: &str) {
                 || !t.connected
                 || !t.alive
                 || t.in_vent
+                || t.hidden_until > now
                 || dist(&me.pos, &t.pos) > 1.8
                 || !can_see_player(&me.pos, &t.pos, rt.room.door_lock_until > now)
             {
@@ -1952,6 +1960,8 @@ fn use_ability(rt: &mut RoomRuntime, player_id: &str, target_id: &str) {
             if t.id == me.id
                 || !t.connected
                 || !t.alive
+                || t.in_vent
+                || t.hidden_until > now
                 || dist(&me.pos, &t.pos) > 1.8
                 || !can_see_player(&me.pos, &t.pos, rt.room.door_lock_until > now)
             {
@@ -1976,6 +1986,8 @@ fn use_ability(rt: &mut RoomRuntime, player_id: &str, target_id: &str) {
             if t.id == me.id
                 || !t.connected
                 || !t.alive
+                || t.in_vent
+                || t.hidden_until > now
                 || dist(&me.pos, &t.pos) > 1.8
                 || !can_see_player(&me.pos, &t.pos, rt.room.door_lock_until > now)
             {
@@ -2197,6 +2209,9 @@ fn report_body(rt: &mut RoomRuntime, player_id: &str, body_id: &str) {
     let Some(b) = rt.room.bodies.iter().find(|b| b.id == body_id).cloned() else {
         return;
     };
+    if b.dissolve_at > 0 && now_ms() >= b.dissolve_at {
+        return;
+    }
     if ((p.pos.x - b.x).powi(2) + (p.pos.y - b.y).powi(2)).sqrt() > 1.7 {
         return;
     }

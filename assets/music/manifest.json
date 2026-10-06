@@ -9,6 +9,24 @@
       "cover": "/assets/music/%E8%8D%89%E9%97%B4%E9%A3%8E.png"
     },
     {
+      "name": "梦的后日谈 Dream Anamnesis",
+      "title": "梦的后日谈 Dream Anamnesis",
+      "src": "/assets/music/%E6%A2%A6%E7%9A%84%E5%90%8E%E6%97%A5%E8%B0%88%20Dream%20Anamnesis.mp3",
+      "cover": ""
+    },
+    {
+      "name": "太空漫步 Space Walk",
+      "title": "太空漫步 Space Walk",
+      "src": "/assets/music/%E5%A4%AA%E7%A9%BA%E6%BC%AB%E6%AD%A5%20Space%20Walk.mp3",
+      "cover": ""
+    },
+    {
+      "name": "雪融之境的繁光",
+      "title": "雪融之境的繁光",
+      "src": "/assets/music/%E9%9B%AA%E8%9E%8D%E4%B9%8B%E5%A2%83%E7%9A%84%E7%B9%81%E5%85%89.mp3",
+      "cover": ""
+    },
+    {
       "name": "夜航",
       "title": "夜航",
       "src": "/assets/music/%E5%A4%9C%E8%88%AA.mov",

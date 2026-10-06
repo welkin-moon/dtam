@@ -1,4 +1,4 @@
-import { GameRoom } from './worker.js?v=20261006-playfix1';
+import { GameRoom } from './worker.js?v=20261006-playfix2';
 
 const RECONNECT_GRACE_MS = 180000;
 const liveRooms = new Set();

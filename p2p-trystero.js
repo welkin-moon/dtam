@@ -1,4 +1,4 @@
-import { GameRoom } from './worker.js?v=20261006-playfix1';
+import { GameRoom } from './worker.js?v=20261006-playfix2';
 
 const NativeWebSocket = window.WebSocket;
 const FALLBACK_HOST = 'rt-d1.lunarlab.uk';

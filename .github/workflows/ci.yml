@@ -36,6 +36,7 @@ jobs:
           node --check /tmp/dtam-worker.mjs
           node scripts/test.cjs
           node scripts/test-p2p-runtime.cjs
+          node scripts/test-roles.cjs
           node scripts/verify-sources.cjs
       - name: Update stable Rust toolchain
         shell: bash
@@ -148,7 +149,7 @@ jobs:
               [ref]$errors
             ) | Out-Null
             if ($errors.Count -gt 0) {
-              $errors | ForEach-Object { Write-Error "$path: $($_.Message)" }
+            $errors | ForEach-Object { Write-Error "${path}: $($_.Message)" }
               exit 1
             }
           }

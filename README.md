@@ -137,6 +137,9 @@ node --check hybrid-transport.js
 node --check minimap-hud.js
 node --check minimap-hud-late.js
 node scripts/test.cjs
+node scripts/test-p2p-runtime.cjs
+node scripts/test-roles.cjs
+node scripts/verify-sources.cjs
 ```
 
 Windows 客户端：

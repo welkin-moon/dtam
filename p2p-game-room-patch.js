@@ -1,4 +1,4 @@
-import { GameRoom } from './worker.js?v=20261006-playfix1';
+import { GameRoom } from './worker.js?v=20261006-playfix2';
 
 const VOICE_SYNC = 'https://voice.lunarlab.uk/v1/sync';
 const VOICE_SYNC_DEBOUNCE_MS = 120;
